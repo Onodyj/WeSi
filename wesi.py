@@ -27,8 +27,16 @@ class WebsiteAnalyzer:
             max_pages: Maximum number of pages to crawl (default: 50)
             timeout: Request timeout in seconds (default: 10)
         """
+        # Validate URL before proceeding
+        if not self.validate_url(base_url):
+            raise ValueError(f"Invalid URL: {base_url}. Please provide a valid HTTP or HTTPS URL.")
+        
         self.base_url = base_url.rstrip('/')
         self.domain = urlparse(base_url).netloc
+        
+        if not self.domain:
+            raise ValueError(f"Could not extract domain from URL: {base_url}")
+        
         self.max_pages = max_pages
         self.timeout = timeout
         self.visited_urls: Set[str] = set()
@@ -38,6 +46,23 @@ class WebsiteAnalyzer:
         self.session.headers.update({
             'User-Agent': 'WeSi-Bot/1.0 (Website Analyzer)'
         })
+    
+    @staticmethod
+    def validate_url(url: str) -> bool:
+        """
+        Validate if a URL is properly formatted.
+        
+        Args:
+            url: The URL to validate
+            
+        Returns:
+            True if the URL is valid, False otherwise
+        """
+        try:
+            result = urlparse(url)
+            return all([result.scheme in ('http', 'https'), result.netloc])
+        except Exception:
+            return False
     
     def is_internal_url(self, url: str) -> bool:
         """Check if a URL is internal to the base domain."""
@@ -311,10 +336,68 @@ class WebsiteAnalyzer:
         
         content, status_code = self.fetch_page(url)
         if status_code == 0 or not content:
+            # Return a consistent structure even when fetch fails
             return {
                 'url': url,
                 'error': 'Failed to fetch page',
-                'status_code': status_code
+                'status_code': status_code,
+                'text_length': 0,
+                'structure': {
+                    'has_header': False,
+                    'has_footer': False,
+                    'has_nav': False,
+                    'has_main': False,
+                    'has_article': False,
+                    'has_aside': False,
+                    'nav_count': 0,
+                    'article_count': 0,
+                    'section_count': 0,
+                    'div_count': 0,
+                    'form_count': 0,
+                    'table_count': 0,
+                    'list_count': 0,
+                    'semantic_elements_used': []
+                },
+                'headings': {
+                    'hierarchy': {f'h{i}': [] for i in range(1, 7)},
+                    'counts': {f'h{i}': 0 for i in range(1, 7)},
+                    'h1_count': 0,
+                    'has_multiple_h1': False
+                },
+                'images': {
+                    'count': 0,
+                    'images': [],
+                    'missing_alt': [],
+                    'missing_alt_count': 0
+                },
+                'links': {
+                    'internal': [],
+                    'external': [],
+                    'total_internal': 0,
+                    'total_external': 0,
+                    'total': 0
+                },
+                'broken_links': [],
+                'seo': {
+                    'title': '',
+                    'title_length': 0,
+                    'meta_description': '',
+                    'meta_description_length': 0,
+                    'meta_keywords': '',
+                    'meta_robots': '',
+                    'canonical_url': '',
+                    'language': '',
+                    'all_meta_tags': {},
+                    'open_graph': {},
+                    'twitter_card': {},
+                    'word_count': 0,
+                    'top_keywords': {},
+                    'keyword_density': {},
+                    'has_title': False,
+                    'has_meta_description': False,
+                    'title_optimal': False,
+                    'description_optimal': False
+                }
             }
         
         soup = BeautifulSoup(content, 'lxml')
@@ -530,14 +613,40 @@ def main():
         sys.exit(1)
     
     url = sys.argv[1]
-    max_pages = int(sys.argv[2]) if len(sys.argv) > 2 else 50
+    
+    # Validate max_pages argument
+    try:
+        max_pages = int(sys.argv[2]) if len(sys.argv) > 2 else 50
+        if max_pages <= 0:
+            print("Error: max_pages must be a positive integer")
+            sys.exit(1)
+    except ValueError:
+        print(f"Error: max_pages must be an integer, got '{sys.argv[2]}'")
+        sys.exit(1)
+    
     output_file = sys.argv[3] if len(sys.argv) > 3 else 'website_analysis.json'
     
     print(f"Starting analysis of {url}")
     print(f"Maximum pages to crawl: {max_pages}\n")
     
-    analyzer = WebsiteAnalyzer(url, max_pages=max_pages)
-    analyzer.crawl()
+    try:
+        analyzer = WebsiteAnalyzer(url, max_pages=max_pages)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error initializing analyzer: {e}")
+        sys.exit(1)
+    
+    try:
+        analyzer.crawl()
+    except Exception as e:
+        print(f"\nError during crawling: {e}")
+        print("Attempting to generate report with collected data...")
+    
+    if not analyzer.pages_data:
+        print("\nError: No pages were successfully analyzed. Please check the URL and try again.")
+        sys.exit(1)
     
     report = analyzer.generate_report()
     
