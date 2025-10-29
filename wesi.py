@@ -330,9 +330,16 @@ class WebsiteAnalyzer:
         
         return structure
     
-    def analyze_page(self, url: str) -> Dict:
-        """Perform comprehensive analysis of a single page."""
-        print(f"Analyzing: {url}")
+    def analyze_page(self, url: str, verbose: bool = True) -> Dict:
+        """
+        Perform comprehensive analysis of a single page.
+        
+        Args:
+            url: The URL to analyze
+            verbose: If True, print status message (default: True)
+        """
+        if verbose:
+            print(f"Analyzing: {url}")
         
         content, status_code = self.fetch_page(url)
         if status_code == 0 or not content:
@@ -445,18 +452,54 @@ class WebsiteAnalyzer:
             
             self.visited_urls.add(normalized)
             
-            page_data = self.analyze_page(normalized)
-            self.pages_data.append(page_data)
+            # Show progress
+            progress = f"[{len(self.visited_urls)}/{self.max_pages}]"
+            print(f"{progress} Analyzing: {normalized[:80]}..." if len(normalized) > 80 else f"{progress} Analyzing: {normalized}")
             
-            # Add internal links to crawl queue
-            if 'links' in page_data and 'internal' in page_data['links']:
-                for link in page_data['links']['internal']:
-                    link_url = self.normalize_url(link['absolute_url'])
-                    if link_url not in self.visited_urls and link_url not in to_visit:
-                        to_visit.append(link_url)
+            try:
+                page_data = self.analyze_page(normalized, verbose=False)
+                self.pages_data.append(page_data)
+                
+                # Only add internal links if page was successfully fetched
+                if not page_data.get('error') and 'links' in page_data and 'internal' in page_data['links']:
+                    for link in page_data['links']['internal']:
+                        link_url = self.normalize_url(link['absolute_url'])
+                        if link_url not in self.visited_urls and link_url not in to_visit:
+                            to_visit.append(link_url)
+            except Exception as e:
+                print(f"  ⚠️  Error analyzing page: {e}")
+                # Still add a consistent error structure to maintain data integrity
+                error_data = {
+                    'url': normalized,
+                    'error': str(e),
+                    'status_code': 0,
+                    'text_length': 0,
+                    'structure': {'has_header': False, 'has_footer': False, 'has_nav': False, 
+                                  'has_main': False, 'has_article': False, 'has_aside': False,
+                                  'nav_count': 0, 'article_count': 0, 'section_count': 0,
+                                  'div_count': 0, 'form_count': 0, 'table_count': 0, 
+                                  'list_count': 0, 'semantic_elements_used': []},
+                    'headings': {'hierarchy': {f'h{i}': [] for i in range(1, 7)},
+                                'counts': {f'h{i}': 0 for i in range(1, 7)},
+                                'h1_count': 0, 'has_multiple_h1': False},
+                    'images': {'count': 0, 'images': [], 'missing_alt': [], 'missing_alt_count': 0},
+                    'links': {'internal': [], 'external': [], 'total_internal': 0, 
+                             'total_external': 0, 'total': 0},
+                    'broken_links': [],
+                    'seo': {'title': '', 'title_length': 0, 'meta_description': '',
+                           'meta_description_length': 0, 'meta_keywords': '', 'meta_robots': '',
+                           'canonical_url': '', 'language': '', 'all_meta_tags': {},
+                           'open_graph': {}, 'twitter_card': {}, 'word_count': 0,
+                           'top_keywords': {}, 'keyword_density': {}, 'has_title': False,
+                           'has_meta_description': False, 'title_optimal': False,
+                           'description_optimal': False}
+                }
+                self.pages_data.append(error_data)
             
             # Be nice to the server
             time.sleep(0.5)
+        
+        print(f"\nCrawl complete! Analyzed {len(self.visited_urls)} page(s).")
     
     def generate_insights(self) -> Dict:
         """Generate actionable insights from the analysis."""
