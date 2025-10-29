@@ -1,0 +1,110 @@
+{
+  "metadata": {
+    "base_url": "https://example.com",
+    "domain": "example.com",
+    "analysis_date": "2025-10-29 20:25:32",
+    "pages_crawled": 1
+  },
+  "summary": {
+    "total_pages_analyzed": 1,
+    "total_images": 0,
+    "images_without_alt": 0,
+    "total_internal_links": 0,
+    "total_external_links": 0,
+    "broken_links_found": 0,
+    "avg_word_count": 0
+  },
+  "insights": {
+    "critical": [
+      "1 page(s) missing title tags. Add unique, descriptive titles to all pages."
+    ],
+    "warnings": [
+      "1 page(s) missing meta descriptions. Add compelling descriptions (150-160 characters) to improve click-through rates.",
+      "1 page(s) missing H1 tags. Add a primary H1 heading to each page."
+    ],
+    "recommendations": [
+      "1 page(s) use limited semantic HTML5 elements. Use elements like <header>, <nav>, <main>, <article> for better structure.",
+      "Average page word count is 0. Consider adding more quality content (aim for 300+ words per page).",
+      "Consider adding more authoritative external links to improve content credibility."
+    ],
+    "positive": []
+  },
+  "pages": [
+    {
+      "url": "https://example.com",
+      "error": "Failed to fetch page",
+      "status_code": 0,
+      "text_length": 0,
+      "structure": {
+        "has_header": false,
+        "has_footer": false,
+        "has_nav": false,
+        "has_main": false,
+        "has_article": false,
+        "has_aside": false,
+        "nav_count": 0,
+        "article_count": 0,
+        "section_count": 0,
+        "div_count": 0,
+        "form_count": 0,
+        "table_count": 0,
+        "list_count": 0,
+        "semantic_elements_used": []
+      },
+      "headings": {
+        "hierarchy": {
+          "h1": [],
+          "h2": [],
+          "h3": [],
+          "h4": [],
+          "h5": [],
+          "h6": []
+        },
+        "counts": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0
+        },
+        "h1_count": 0,
+        "has_multiple_h1": false
+      },
+      "images": {
+        "count": 0,
+        "images": [],
+        "missing_alt": [],
+        "missing_alt_count": 0
+      },
+      "links": {
+        "internal": [],
+        "external": [],
+        "total_internal": 0,
+        "total_external": 0,
+        "total": 0
+      },
+      "broken_links": [],
+      "seo": {
+        "title": "",
+        "title_length": 0,
+        "meta_description": "",
+        "meta_description_length": 0,
+        "meta_keywords": "",
+        "meta_robots": "",
+        "canonical_url": "",
+        "language": "",
+        "all_meta_tags": {},
+        "open_graph": {},
+        "twitter_card": {},
+        "word_count": 0,
+        "top_keywords": {},
+        "keyword_density": {},
+        "has_title": false,
+        "has_meta_description": false,
+        "title_optimal": false,
+        "description_optimal": false
+      }
+    }
+  ]
+}

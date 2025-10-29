@@ -330,6 +330,81 @@ class WebsiteAnalyzer:
         
         return structure
     
+    def _create_empty_page_data(self, url: str, error_msg: str = 'Failed to fetch page', status_code: int = 0) -> Dict:
+        """
+        Create an empty page data structure for failed page fetches.
+        
+        Args:
+            url: The URL that failed
+            error_msg: The error message to include
+            status_code: HTTP status code (0 for connection failures)
+            
+        Returns:
+            A dictionary with empty/default values for all expected fields
+        """
+        return {
+            'url': url,
+            'error': error_msg,
+            'status_code': status_code,
+            'text_length': 0,
+            'structure': {
+                'has_header': False,
+                'has_footer': False,
+                'has_nav': False,
+                'has_main': False,
+                'has_article': False,
+                'has_aside': False,
+                'nav_count': 0,
+                'article_count': 0,
+                'section_count': 0,
+                'div_count': 0,
+                'form_count': 0,
+                'table_count': 0,
+                'list_count': 0,
+                'semantic_elements_used': []
+            },
+            'headings': {
+                'hierarchy': {f'h{i}': [] for i in range(1, 7)},
+                'counts': {f'h{i}': 0 for i in range(1, 7)},
+                'h1_count': 0,
+                'has_multiple_h1': False
+            },
+            'images': {
+                'count': 0,
+                'images': [],
+                'missing_alt': [],
+                'missing_alt_count': 0
+            },
+            'links': {
+                'internal': [],
+                'external': [],
+                'total_internal': 0,
+                'total_external': 0,
+                'total': 0
+            },
+            'broken_links': [],
+            'seo': {
+                'title': '',
+                'title_length': 0,
+                'meta_description': '',
+                'meta_description_length': 0,
+                'meta_keywords': '',
+                'meta_robots': '',
+                'canonical_url': '',
+                'language': '',
+                'all_meta_tags': {},
+                'open_graph': {},
+                'twitter_card': {},
+                'word_count': 0,
+                'top_keywords': {},
+                'keyword_density': {},
+                'has_title': False,
+                'has_meta_description': False,
+                'title_optimal': False,
+                'description_optimal': False
+            }
+        }
+    
     def analyze_page(self, url: str, verbose: bool = True) -> Dict:
         """
         Perform comprehensive analysis of a single page.
@@ -344,68 +419,7 @@ class WebsiteAnalyzer:
         content, status_code = self.fetch_page(url)
         if status_code == 0 or not content:
             # Return a consistent structure even when fetch fails
-            return {
-                'url': url,
-                'error': 'Failed to fetch page',
-                'status_code': status_code,
-                'text_length': 0,
-                'structure': {
-                    'has_header': False,
-                    'has_footer': False,
-                    'has_nav': False,
-                    'has_main': False,
-                    'has_article': False,
-                    'has_aside': False,
-                    'nav_count': 0,
-                    'article_count': 0,
-                    'section_count': 0,
-                    'div_count': 0,
-                    'form_count': 0,
-                    'table_count': 0,
-                    'list_count': 0,
-                    'semantic_elements_used': []
-                },
-                'headings': {
-                    'hierarchy': {f'h{i}': [] for i in range(1, 7)},
-                    'counts': {f'h{i}': 0 for i in range(1, 7)},
-                    'h1_count': 0,
-                    'has_multiple_h1': False
-                },
-                'images': {
-                    'count': 0,
-                    'images': [],
-                    'missing_alt': [],
-                    'missing_alt_count': 0
-                },
-                'links': {
-                    'internal': [],
-                    'external': [],
-                    'total_internal': 0,
-                    'total_external': 0,
-                    'total': 0
-                },
-                'broken_links': [],
-                'seo': {
-                    'title': '',
-                    'title_length': 0,
-                    'meta_description': '',
-                    'meta_description_length': 0,
-                    'meta_keywords': '',
-                    'meta_robots': '',
-                    'canonical_url': '',
-                    'language': '',
-                    'all_meta_tags': {},
-                    'open_graph': {},
-                    'twitter_card': {},
-                    'word_count': 0,
-                    'top_keywords': {},
-                    'keyword_density': {},
-                    'has_title': False,
-                    'has_meta_description': False,
-                    'title_optimal': False,
-                    'description_optimal': False
-                }
-            }
+            return self._create_empty_page_data(url, 'Failed to fetch page', status_code)
         
         soup = BeautifulSoup(content, 'lxml')
         text_content = self.extract_text_content(soup)
@@ -452,9 +466,10 @@ class WebsiteAnalyzer:
             
             self.visited_urls.add(normalized)
             
-            # Show progress
+            # Show progress with truncated URL if needed
             progress = f"[{len(self.visited_urls)}/{self.max_pages}]"
-            print(f"{progress} Analyzing: {normalized[:80]}..." if len(normalized) > 80 else f"{progress} Analyzing: {normalized}")
+            display_url = f"{normalized[:80]}..." if len(normalized) > 80 else normalized
+            print(f"{progress} Analyzing: {display_url}")
             
             try:
                 page_data = self.analyze_page(normalized, verbose=False)
@@ -468,32 +483,8 @@ class WebsiteAnalyzer:
                             to_visit.append(link_url)
             except Exception as e:
                 print(f"  ⚠️  Error analyzing page: {e}")
-                # Still add a consistent error structure to maintain data integrity
-                error_data = {
-                    'url': normalized,
-                    'error': str(e),
-                    'status_code': 0,
-                    'text_length': 0,
-                    'structure': {'has_header': False, 'has_footer': False, 'has_nav': False, 
-                                  'has_main': False, 'has_article': False, 'has_aside': False,
-                                  'nav_count': 0, 'article_count': 0, 'section_count': 0,
-                                  'div_count': 0, 'form_count': 0, 'table_count': 0, 
-                                  'list_count': 0, 'semantic_elements_used': []},
-                    'headings': {'hierarchy': {f'h{i}': [] for i in range(1, 7)},
-                                'counts': {f'h{i}': 0 for i in range(1, 7)},
-                                'h1_count': 0, 'has_multiple_h1': False},
-                    'images': {'count': 0, 'images': [], 'missing_alt': [], 'missing_alt_count': 0},
-                    'links': {'internal': [], 'external': [], 'total_internal': 0, 
-                             'total_external': 0, 'total': 0},
-                    'broken_links': [],
-                    'seo': {'title': '', 'title_length': 0, 'meta_description': '',
-                           'meta_description_length': 0, 'meta_keywords': '', 'meta_robots': '',
-                           'canonical_url': '', 'language': '', 'all_meta_tags': {},
-                           'open_graph': {}, 'twitter_card': {}, 'word_count': 0,
-                           'top_keywords': {}, 'keyword_density': {}, 'has_title': False,
-                           'has_meta_description': False, 'title_optimal': False,
-                           'description_optimal': False}
-                }
+                # Use helper method for consistent error structure
+                error_data = self._create_empty_page_data(normalized, str(e), 0)
                 self.pages_data.append(error_data)
             
             # Be nice to the server
