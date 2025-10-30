@@ -59,11 +59,14 @@ Examples:
             print("No API keys found.")
             return 0
         
-        print(f"\n{'Key':<40} {'Owner':<20} {'Active':<10} {'Created At'}")
+        print(f"\n{'Key (masked)':<40} {'Owner':<20} {'Active':<10} {'Created At'}")
         print("-" * 90)
         for key_info in keys:
             active_status = "Yes" if key_info['active'] else "No"
-            print(f"{key_info['key']:<40} {key_info['owner']:<20} {active_status:<10} {key_info['created_at']}")
+            # Mask the API key, showing only the first 8 and last 4 characters
+            key = key_info['key']
+            masked_key = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else f"{key[:4]}...{key[-4:]}"
+            print(f"{masked_key:<40} {key_info['owner']:<20} {active_status:<10} {key_info['created_at']}")
         print()
         return 0
     
