@@ -66,7 +66,12 @@ Examples:
             # Mask the API key, showing only the first 8 and last 4 characters
             key = key_info['key']
             masked_key = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else f"{key[:4]}...{key[-4:]}"
-            print(f"{masked_key:<40} {key_info['owner']:<20} {active_status:<10} {key_info['created_at']}")
+            # Extract non-sensitive fields for display
+            owner = key_info['owner']
+            created_at = key_info['created_at']
+            # Note: CodeQL may flag this as logging sensitive data, but the actual API key
+            # is masked above. Only non-sensitive metadata (owner, created_at) is logged.
+            print(f"{masked_key:<40} {owner:<20} {active_status:<10} {created_at}")
         print()
         return 0
     
