@@ -18,6 +18,23 @@ import time
 class WebsiteAnalyzer:
     """Comprehensive website analyzer for structure, content, and SEO analysis."""
     
+    @staticmethod
+    def validate_url(url: str) -> bool:
+        """
+        Validate if the URL has a valid scheme and netloc.
+        
+        Args:
+            url: URL string to validate
+            
+        Returns:
+            True if URL is valid (http/https scheme and non-empty netloc), False otherwise
+        """
+        try:
+            parsed = urlparse(url)
+            return parsed.scheme in ('http', 'https') and bool(parsed.netloc)
+        except Exception:
+            return False
+    
     def __init__(self, base_url: str, max_pages: int = 50, timeout: int = 10):
         """
         Initialize the website analyzer.
@@ -27,8 +44,18 @@ class WebsiteAnalyzer:
             max_pages: Maximum number of pages to crawl (default: 50)
             timeout: Request timeout in seconds (default: 10)
         """
+        # Validate URL before proceeding
+        if not self.validate_url(base_url):
+            raise ValueError(f"Invalid URL: '{base_url}'. URL must have http:// or https:// scheme and a valid domain.")
+        
+        # Extract domain
+        parsed = urlparse(base_url)
+        domain = parsed.netloc
+        if not domain:
+            raise ValueError(f"Failed to extract domain from URL: '{base_url}'")
+        
         self.base_url = base_url.rstrip('/')
-        self.domain = urlparse(base_url).netloc
+        self.domain = domain
         self.max_pages = max_pages
         self.timeout = timeout
         self.visited_urls: Set[str] = set()
@@ -51,6 +78,81 @@ class WebsiteAnalyzer:
         if parsed.query:
             normalized += f"?{parsed.query}"
         return normalized.rstrip('/')
+    
+    def _create_empty_page_data(self, url: str, error_msg: str = 'Failed to fetch page', status_code: int = 0) -> Dict:
+        """
+        Create a consistent empty page data structure for failed fetches.
+        
+        Args:
+            url: The URL that failed
+            error_msg: Error message describing the failure
+            status_code: HTTP status code (0 if network error)
+            
+        Returns:
+            Dictionary with consistent structure for failed page data
+        """
+        return {
+            'url': url,
+            'error': error_msg,
+            'status_code': status_code,
+            'text_length': 0,
+            'structure': {
+                'has_header': False,
+                'has_footer': False,
+                'has_nav': False,
+                'has_main': False,
+                'has_article': False,
+                'has_aside': False,
+                'nav_count': 0,
+                'article_count': 0,
+                'section_count': 0,
+                'div_count': 0,
+                'form_count': 0,
+                'table_count': 0,
+                'list_count': 0,
+                'semantic_elements_used': []
+            },
+            'headings': {
+                'hierarchy': {f'h{i}': [] for i in range(1, 7)},
+                'counts': {f'h{i}': 0 for i in range(1, 7)},
+                'h1_count': 0,
+                'has_multiple_h1': False
+            },
+            'images': {
+                'count': 0,
+                'images': [],
+                'missing_alt': [],
+                'missing_alt_count': 0
+            },
+            'links': {
+                'internal': [],
+                'external': [],
+                'total_internal': 0,
+                'total_external': 0,
+                'total': 0
+            },
+            'broken_links': [],
+            'seo': {
+                'title': '',
+                'title_length': 0,
+                'meta_description': '',
+                'meta_description_length': 0,
+                'meta_keywords': '',
+                'meta_robots': '',
+                'canonical_url': '',
+                'language': '',
+                'all_meta_tags': {},
+                'open_graph': {},
+                'twitter_card': {},
+                'word_count': 0,
+                'top_keywords': {},
+                'keyword_density': {},
+                'has_title': False,
+                'has_meta_description': False,
+                'title_optimal': False,
+                'description_optimal': False
+            }
+        }
     
     def fetch_page(self, url: str) -> Tuple[str, int]:
         """
@@ -305,17 +407,14 @@ class WebsiteAnalyzer:
         
         return structure
     
-    def analyze_page(self, url: str) -> Dict:
+    def analyze_page(self, url: str, verbose: bool = True) -> Dict:
         """Perform comprehensive analysis of a single page."""
-        print(f"Analyzing: {url}")
+        if verbose:
+            print(f"Analyzing: {url}")
         
         content, status_code = self.fetch_page(url)
         if status_code == 0 or not content:
-            return {
-                'url': url,
-                'error': 'Failed to fetch page',
-                'status_code': status_code
-            }
+            return self._create_empty_page_data(url, 'Failed to fetch page', status_code)
         
         soup = BeautifulSoup(content, 'lxml')
         text_content = self.extract_text_content(soup)
@@ -362,11 +461,23 @@ class WebsiteAnalyzer:
             
             self.visited_urls.add(normalized)
             
-            page_data = self.analyze_page(normalized)
-            self.pages_data.append(page_data)
+            # Print progress with truncated URL if needed
+            visited_count = len(self.visited_urls)
+            display_url = normalized if len(normalized) <= 80 else normalized[:77] + '...'
+            print(f"[{visited_count}/{self.max_pages}] Crawling: {display_url}")
             
-            # Add internal links to crawl queue
-            if 'links' in page_data and 'internal' in page_data['links']:
+            # Analyze page with error handling
+            page_data = None
+            try:
+                page_data = self.analyze_page(normalized, verbose=False)
+                self.pages_data.append(page_data)
+            except Exception as e:
+                print(f"Error analyzing {display_url}: {e}")
+                page_data = self._create_empty_page_data(normalized, str(e), 0)
+                self.pages_data.append(page_data)
+            
+            # Add internal links to crawl queue only if page was successfully analyzed
+            if 'error' not in page_data and 'links' in page_data and 'internal' in page_data['links']:
                 for link in page_data['links']['internal']:
                     link_url = self.normalize_url(link['absolute_url'])
                     if link_url not in self.visited_urls and link_url not in to_visit:
@@ -374,6 +485,9 @@ class WebsiteAnalyzer:
             
             # Be nice to the server
             time.sleep(0.5)
+        
+        # Print completion message
+        print(f"\nCrawl complete! Analyzed {len(self.pages_data)} page(s).")
     
     def generate_insights(self) -> Dict:
         """Generate actionable insights from the analysis."""
@@ -530,14 +644,45 @@ def main():
         sys.exit(1)
     
     url = sys.argv[1]
-    max_pages = int(sys.argv[2]) if len(sys.argv) > 2 else 50
+    
+    # Validate and parse max_pages
+    max_pages = 50  # default
+    if len(sys.argv) > 2:
+        try:
+            max_pages = int(sys.argv[2])
+            if max_pages <= 0:
+                print(f"Error: max_pages must be a positive integer, got: {sys.argv[2]}")
+                sys.exit(1)
+        except ValueError:
+            print(f"Error: max_pages must be a valid integer, got: {sys.argv[2]}")
+            sys.exit(1)
+    
     output_file = sys.argv[3] if len(sys.argv) > 3 else 'website_analysis.json'
     
     print(f"Starting analysis of {url}")
     print(f"Maximum pages to crawl: {max_pages}\n")
     
-    analyzer = WebsiteAnalyzer(url, max_pages=max_pages)
-    analyzer.crawl()
+    # Initialize analyzer with error handling
+    try:
+        analyzer = WebsiteAnalyzer(url, max_pages=max_pages)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error initializing analyzer: {e}")
+        sys.exit(1)
+    
+    # Crawl with error handling
+    try:
+        analyzer.crawl()
+    except Exception as e:
+        print(f"Error during crawling: {e}")
+        # Continue to report generation if we have any data
+    
+    # Check if we have any data to report
+    if not analyzer.pages_data:
+        print("Error: No pages were successfully analyzed. Cannot generate report.")
+        sys.exit(1)
     
     report = analyzer.generate_report()
     
