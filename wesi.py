@@ -7,18 +7,36 @@ A comprehensive tool to map and analyze website structure, content, and SEO.
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
+from urllib.robotparser import RobotFileParser
 from collections import Counter, defaultdict
 import json
 import re
 import sys
+import os
+import logging
 from typing import Dict, List, Set, Tuple, Any
 import time
+
+
+def validate_url(url: str) -> bool:
+    """
+    Validate URL format, accepting both with and without schemes.
+    
+    Args:
+        url: URL to validate
+        
+    Returns:
+        True if URL has at least a netloc (domain), False otherwise
+    """
+    parsed = urlparse(url)
+    # Accept URLs with netloc, even without scheme
+    return bool(parsed.netloc) or bool(parsed.path and '.' in parsed.path.split('/')[0])
 
 
 class WebsiteAnalyzer:
     """Comprehensive website analyzer for structure, content, and SEO analysis."""
     
-    def __init__(self, base_url: str, max_pages: int = 50, timeout: int = 10):
+    def __init__(self, base_url: str, max_pages: int = 50, timeout: int = 10, delay: float = None):
         """
         Initialize the website analyzer.
         
@@ -26,11 +44,31 @@ class WebsiteAnalyzer:
             base_url: The base URL of the website to analyze
             max_pages: Maximum number of pages to crawl (default: 50)
             timeout: Request timeout in seconds (default: 10)
+            delay: Politeness delay between requests in seconds (default: 0.5 or from WEBSI_DELAY env var)
         """
+        # Initialize logger
+        self.logger = logging.getLogger(__name__)
+        
+        # Auto-prepend scheme if missing
+        if not urlparse(base_url).scheme:
+            base_url = 'http://' + base_url
+            self.logger.info(f"Auto-prepended scheme to base URL: {base_url}")
+        
+        # Validate URL
+        if not validate_url(base_url):
+            raise ValueError(f"Invalid URL: {base_url}")
+        
         self.base_url = base_url.rstrip('/')
         self.domain = urlparse(base_url).netloc
         self.max_pages = max_pages
         self.timeout = timeout
+        
+        # Set crawl delay from parameter, env var, or default
+        if delay is not None:
+            self.delay = delay
+        else:
+            self.delay = float(os.environ.get('WEBSI_DELAY', '0.5'))
+        
         self.visited_urls: Set[str] = set()
         self.pages_data: List[Dict] = []
         self.broken_links: List[Dict] = []
@@ -38,6 +76,48 @@ class WebsiteAnalyzer:
         self.session.headers.update({
             'User-Agent': 'WeSi-Bot/1.0 (Website Analyzer)'
         })
+        
+        # Initialize robots.txt parser
+        self.robots_parser = None
+        self._load_robots_txt()
+    
+    def _load_robots_txt(self):
+        """Load and parse robots.txt if available."""
+        try:
+            robots_url = urljoin(self.base_url, '/robots.txt')
+            self.logger.debug(f"Fetching robots.txt from: {robots_url}")
+            
+            response = self.session.get(robots_url, timeout=self.timeout)
+            if response.status_code == 200:
+                self.robots_parser = RobotFileParser()
+                self.robots_parser.set_url(robots_url)
+                # Parse the robots.txt content
+                self.robots_parser.parse(response.text.splitlines())
+                self.logger.info(f"Successfully loaded robots.txt from {robots_url}")
+            else:
+                self.logger.debug(f"No robots.txt found (status: {response.status_code})")
+        except Exception as e:
+            self.logger.debug(f"Could not load robots.txt: {e}")
+    
+    def is_allowed_by_robots(self, url: str) -> bool:
+        """
+        Check if URL is allowed by robots.txt.
+        
+        Args:
+            url: URL to check
+            
+        Returns:
+            True if allowed or no robots.txt, False if disallowed
+        """
+        if self.robots_parser is None:
+            return True
+        
+        try:
+            user_agent = self.session.headers.get('User-Agent', '*')
+            return self.robots_parser.can_fetch(user_agent, url)
+        except Exception as e:
+            self.logger.debug(f"Error checking robots.txt for {url}: {e}")
+            return True
     
     def is_internal_url(self, url: str) -> bool:
         """Check if a URL is internal to the base domain."""
@@ -45,12 +125,25 @@ class WebsiteAnalyzer:
         return parsed.netloc == self.domain or parsed.netloc == ''
     
     def normalize_url(self, url: str) -> str:
-        """Normalize URL by removing fragments and trailing slashes."""
+        """Normalize URL by removing fragments and trailing slashes, handling missing schemes."""
+        # Handle relative URLs or URLs without scheme by joining with base_url
+        if not urlparse(url).scheme:
+            url = urljoin(self.base_url, url)
+        
         parsed = urlparse(url)
-        normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-        if parsed.query:
-            normalized += f"?{parsed.query}"
-        return normalized.rstrip('/')
+        
+        # Build normalized URL with scheme and netloc
+        if parsed.scheme and parsed.netloc:
+            normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+            if parsed.query:
+                normalized += f"?{parsed.query}"
+            # Note: params are rare, but handle them if present
+            if parsed.params:
+                normalized += f";{parsed.params}"
+            return normalized.rstrip('/')
+        
+        # If still no scheme/netloc, return as-is (edge case)
+        return url.rstrip('/')
     
     def fetch_page(self, url: str) -> Tuple[str, int]:
         """
@@ -63,7 +156,7 @@ class WebsiteAnalyzer:
             response = self.session.get(url, timeout=self.timeout, allow_redirects=True)
             return response.text, response.status_code
         except requests.RequestException as e:
-            print(f"Error fetching {url}: {e}", file=sys.stderr)
+            self.logger.warning(f"Error fetching {url}: {e}")
             return "", 0
     
     def extract_text_content(self, soup: BeautifulSoup) -> str:
@@ -305,17 +398,22 @@ class WebsiteAnalyzer:
         
         return structure
     
-    def analyze_page(self, url: str) -> Dict:
+    def _create_empty_page_data(self, url: str, error: str, status_code: int = 0) -> Dict:
+        """Create empty page data structure for failed pages."""
+        return {
+            'url': url,
+            'error': error,
+            'status_code': status_code
+        }
+    
+    def analyze_page(self, url: str, verbose: bool = True) -> Dict:
         """Perform comprehensive analysis of a single page."""
-        print(f"Analyzing: {url}")
+        if verbose:
+            self.logger.info(f"Analyzing: {url}")
         
         content, status_code = self.fetch_page(url)
         if status_code == 0 or not content:
-            return {
-                'url': url,
-                'error': 'Failed to fetch page',
-                'status_code': status_code
-            }
+            return self._create_empty_page_data(url, 'Failed to fetch page', status_code)
         
         soup = BeautifulSoup(content, 'lxml')
         text_content = self.extract_text_content(soup)
@@ -360,6 +458,11 @@ class WebsiteAnalyzer:
             if normalized in self.visited_urls:
                 continue
             
+            # Check robots.txt before crawling
+            if not self.is_allowed_by_robots(normalized):
+                self.logger.info(f"Skipping {normalized} (disallowed by robots.txt)")
+                continue
+            
             self.visited_urls.add(normalized)
             
             page_data = self.analyze_page(normalized)
@@ -370,10 +473,12 @@ class WebsiteAnalyzer:
                 for link in page_data['links']['internal']:
                     link_url = self.normalize_url(link['absolute_url'])
                     if link_url not in self.visited_urls and link_url not in to_visit:
-                        to_visit.append(link_url)
+                        # Check robots.txt before enqueueing
+                        if self.is_allowed_by_robots(link_url):
+                            to_visit.append(link_url)
             
             # Be nice to the server
-            time.sleep(0.5)
+            time.sleep(self.delay)
     
     def generate_insights(self) -> Dict:
         """Generate actionable insights from the analysis."""
@@ -513,20 +618,31 @@ class WebsiteAnalyzer:
         report = self.generate_report()
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
-        print(f"\nReport saved to: {filename}")
+        self.logger.info(f"Report saved to: {filename}")
         return filename
 
 
 def main():
     """Main entry point for the CLI."""
+    # Configure logging
+    log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
     if len(sys.argv) < 2:
         print("Usage: python wesi.py <website_url> [max_pages] [output_file]")
         print("\nExample:")
         print("  python wesi.py https://example.com 10 report.json")
+        print("  python wesi.py example.com 10 report.json  # scheme will be auto-prepended")
         print("\nOptions:")
         print("  website_url  - The URL of the website to analyze (required)")
         print("  max_pages    - Maximum number of pages to crawl (default: 50)")
         print("  output_file  - Output JSON file name (default: website_analysis.json)")
+        print("\nEnvironment Variables:")
+        print("  LOG_LEVEL    - Set logging level: DEBUG, INFO, WARNING, ERROR (default: INFO)")
+        print("  WEBSI_DELAY  - Set crawl delay in seconds (default: 0.5)")
         sys.exit(1)
     
     url = sys.argv[1]
@@ -536,8 +652,12 @@ def main():
     print(f"Starting analysis of {url}")
     print(f"Maximum pages to crawl: {max_pages}\n")
     
-    analyzer = WebsiteAnalyzer(url, max_pages=max_pages)
-    analyzer.crawl()
+    try:
+        analyzer = WebsiteAnalyzer(url, max_pages=max_pages)
+        analyzer.crawl()
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
     
     report = analyzer.generate_report()
     
