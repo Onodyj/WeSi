@@ -24,6 +24,7 @@ wheels/
 venv/
 ENV/
 env/
+.env
 
 # IDE
 .vscode/
@@ -36,10 +37,15 @@ env/
 .coverage
 htmlcov/
 
-# Output files
-*.json
-!example_*.json
-
 # Temp files
 *.tmp
 *.log
+
+# Database files
+data/wesi.db
+data/*.db
+
+# Reports
+reports/
+*.json
+!example_*.json
