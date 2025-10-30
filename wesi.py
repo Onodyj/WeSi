@@ -28,9 +28,28 @@ def validate_url(url: str) -> bool:
     Returns:
         True if URL has at least a netloc (domain), False otherwise
     """
+    if not url:
+        return False
+    
     parsed = urlparse(url)
-    # Accept URLs with netloc, even without scheme
-    return bool(parsed.netloc) or bool(parsed.path and '.' in parsed.path.split('/')[0])
+    # Accept URLs with netloc (domain present)
+    if parsed.netloc:
+        return True
+    
+    # For schemeless URLs, check if path looks like a domain
+    # Must have at least one dot and no slashes before the first dot
+    if parsed.path and not parsed.scheme:
+        # Split by slash and check the first part
+        first_part = parsed.path.split('/')[0]
+        # Valid if it contains a dot, doesn't start with a dot, and has reasonable length
+        # Check that both parts around the dot have at least 2 chars
+        if '.' in first_part and not first_part.startswith('.'):
+            parts = first_part.split('.')
+            # At least one part should have 2+ chars for a valid domain
+            if any(len(part) >= 2 for part in parts) and len(first_part) > 3:
+                return True
+    
+    return False
 
 
 class WebsiteAnalyzer:
@@ -67,7 +86,11 @@ class WebsiteAnalyzer:
         if delay is not None:
             self.delay = delay
         else:
-            self.delay = float(os.environ.get('WEBSI_DELAY', '0.5'))
+            try:
+                self.delay = float(os.environ.get('WEBSI_DELAY', '0.5'))
+            except ValueError:
+                self.logger.warning(f"Invalid WEBSI_DELAY value, using default 0.5")
+                self.delay = 0.5
         
         self.visited_urls: Set[str] = set()
         self.pages_data: List[Dict] = []
@@ -127,19 +150,28 @@ class WebsiteAnalyzer:
     def normalize_url(self, url: str) -> str:
         """Normalize URL by removing fragments and trailing slashes, handling missing schemes."""
         # Handle relative URLs or URLs without scheme by joining with base_url
-        if not urlparse(url).scheme:
-            url = urljoin(self.base_url, url)
+        # But preserve absolute URLs from other domains
+        parsed_input = urlparse(url)
         
-        parsed = urlparse(url)
+        # If URL has a scheme and netloc, it's absolute - use as-is
+        if parsed_input.scheme and parsed_input.netloc:
+            parsed = parsed_input
+        # If URL has no scheme but starts with //, treat as protocol-relative
+        elif url.startswith('//'):
+            parsed = urlparse(url)
+        # Otherwise, treat as relative and join with base
+        else:
+            url = urljoin(self.base_url, url)
+            parsed = urlparse(url)
         
         # Build normalized URL with scheme and netloc
         if parsed.scheme and parsed.netloc:
             normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-            if parsed.query:
-                normalized += f"?{parsed.query}"
-            # Note: params are rare, but handle them if present
+            # Note: params come before query in URL structure (path;params?query)
             if parsed.params:
                 normalized += f";{parsed.params}"
+            if parsed.query:
+                normalized += f"?{parsed.query}"
             return normalized.rstrip('/')
         
         # If still no scheme/netloc, return as-is (edge case)
