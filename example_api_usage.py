@@ -11,9 +11,11 @@ import requests
 import time
 import sys
 
+import os
+
 # Configuration
-API_KEY = "test-key-123"  # Replace with your API key
-BASE_URL = "http://localhost:8000"
+API_KEY = os.environ.get("WESI_API_KEY", "test-key-123")  # Get from env or use default
+BASE_URL = os.environ.get("WESI_API_URL", "http://localhost:8000")
 
 
 def submit_analysis(url: str, max_pages: int = 10):
@@ -68,14 +70,14 @@ def wait_for_completion(job_id: str, poll_interval: int = 3):
         job_status = check_job_status(job_id)
         status = job_status['status']
         
-        print(f"Status: {status}", end="\r")
+        print(f"Status: {status}...")
         
         if status == "completed":
-            print(f"\n✅ Job completed successfully!")
+            print(f"✅ Job completed successfully!")
             print(f"   Report path: {job_status['report_path']}")
             return job_status
         elif status == "failed":
-            print(f"\n❌ Job failed!")
+            print(f"❌ Job failed!")
             print(f"   Error: {job_status['error']}")
             sys.exit(1)
         
@@ -131,7 +133,14 @@ def main():
     
     max_pages = 5
     if len(sys.argv) > 2:
-        max_pages = int(sys.argv[2])
+        try:
+            max_pages = int(sys.argv[2])
+            if max_pages <= 0:
+                print("Error: max_pages must be a positive integer")
+                sys.exit(1)
+        except ValueError:
+            print(f"Error: max_pages must be an integer, got: {sys.argv[2]}")
+            sys.exit(1)
     
     job_id = submit_analysis(url, max_pages)
     
