@@ -20,10 +20,11 @@ def generate_api_key(length: int = 32) -> str:
     Generate a secure random API key.
     
     Args:
-        length: Length of the key (default: 32 characters)
+        length: Number of random bytes to generate (default: 32 bytes)
+                The resulting hex string will be 2*length characters long
         
     Returns:
-        Hex-encoded random string
+        Hex-encoded random string (64 characters for default length of 32 bytes)
     """
     return secrets.token_hex(length)
 

@@ -295,4 +295,10 @@ def list_jobs(api_key: Optional[str] = None, limit: int = 100) -> List[Dict[str,
 
 
 # Initialize database on module import
-init_db()
+# Wrapped in try-except to handle cases where DB path is not writable
+try:
+    init_db()
+except Exception as e:
+    import sys
+    print(f"Warning: Failed to initialize database: {e}", file=sys.stderr)
+    print(f"Database path: {DB_PATH}", file=sys.stderr)
