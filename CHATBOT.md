@@ -123,3 +123,8 @@ python wesi.py https://example.com --chat --provider google
 
 ```
 You: Give me a summary of the analysis
+Assistant: Here's a summary...
+
+### Common Questions
+
+See example_chatbot_usage.py for more examples.
