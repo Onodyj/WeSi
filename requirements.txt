@@ -2,3 +2,8 @@ beautifulsoup4==4.12.3
 requests==2.31.0
 lxml==5.1.0
 urllib3==2.2.0
+
+# Optional chatbot dependencies (install as needed)
+# For OpenAI chatbot: pip install openai
+# For Anthropic chatbot: pip install anthropic
+# For Google chatbot: pip install google-generativeai
