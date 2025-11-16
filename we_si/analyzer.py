@@ -124,13 +124,13 @@ class PageAnalyzer:
         
         return structured_data
     
-    def analyze_accessibility(self, soup: BeautifulSoup, images: List[Dict]) -> Dict:
+    def analyze_accessibility(self, soup: BeautifulSoup, images: Dict) -> Dict:
         """
         Analyze accessibility features.
         
         Args:
             soup: BeautifulSoup object
-            images: List of image data
+            images: Dictionary with image data (has 'images' list)
             
         Returns:
             Accessibility analysis results
@@ -139,11 +139,16 @@ class PageAnalyzer:
         warnings = []
         good_practices = []
         
-        # Check images
-        images_without_alt = sum(1 for img in images if not img['has_alt'])
+        # Check images - handle both dict with 'images' key and list of images
+        if isinstance(images, dict):
+            images_list = images.get('images', [])
+        else:
+            images_list = images
+        
+        images_without_alt = sum(1 for img in images_list if not img.get('has_alt', True))
         if images_without_alt > 0:
             issues.append(f"{images_without_alt} image(s) missing alt text")
-        else:
+        elif images_list:
             good_practices.append("All images have alt text")
         
         # Check form labels

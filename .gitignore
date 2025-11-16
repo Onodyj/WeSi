@@ -43,3 +43,11 @@ htmlcov/
 # Temp files
 *.tmp
 *.log
+
+# Environment and secrets
+.env
+*.db
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
