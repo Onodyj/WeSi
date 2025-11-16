@@ -2,6 +2,37 @@
 
 A comprehensive Python-based website analysis platform that provides detailed SEO, accessibility, and performance insights with AI-powered recommendations.
 
+## ⚡ Quick Start
+
+### For CLI Users (Simple)
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Analyze a website (works just like v1.0)
+python wesi.py https://example.com 10 report.json
+```
+
+### For API Platform (Full Features)
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Configure environment
+python config_helper.py
+
+# 3. Start all services
+./start_wesi.sh
+
+# API now available at http://localhost:5000
+```
+
+### Try the Examples
+```bash
+# See new features in action
+python example_v2_usage.py
+```
+
 ## Features
 
 ### 🚀 Version 2.0 - Full Site Analysis Platform
