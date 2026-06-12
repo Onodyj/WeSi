@@ -411,17 +411,27 @@ def _fallback_scores(report: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _site_meta_from_report(report: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = report.get("metadata", {}) or {}
+    summary = report.get("summary", {}) or {}
+    return {
+        "base_url": metadata.get("base_url"),
+        "domain": metadata.get("domain"),
+        "pages_crawled": metadata.get("pages_crawled", summary.get("total_pages_analyzed", 0)),
+        "pages_analyzed": summary.get("total_pages_analyzed", 0),
+    }
+
+
+
 def _generate_scores(report: Dict[str, Any]) -> Dict[str, Any]:
     try:
         from we_si.scoring import SiteIQScorer  # type: ignore
 
         scorer = SiteIQScorer()
-        for method_name in ("score_analysis", "calculate_scores", "generate_scores", "score"):
-            method = getattr(scorer, method_name, None)
-            if callable(method):
-                result = method(report)
-                if isinstance(result, dict):
-                    return result
+        pages = report.get("pages", []) or []
+        result = scorer.score_site(pages, _site_meta_from_report(report))
+        if isinstance(result, dict):
+            return result
     except ImportError:
         LOGGER.info("SiteIQScorer not available; using fallback scoring.")
     except Exception as exc:
@@ -450,14 +460,13 @@ def _generate_recommendations(report: Dict[str, Any]) -> Dict[str, Any]:
         from we_si.recommendations import RecommendationEngine  # type: ignore
 
         engine = RecommendationEngine()
-        for method_name in ("generate", "generate_recommendations", "build_recommendations"):
-            method = getattr(engine, method_name, None)
-            if callable(method):
-                result = method(report)
-                if isinstance(result, dict):
-                    return result
-                if isinstance(result, list):
-                    return {"count": len(result), "items": result}
+        pages = report.get("pages", []) or []
+        scores = _generate_scores(report)
+        result = engine.generate(pages, scores, _site_meta_from_report(report))
+        if isinstance(result, dict):
+            return result
+        if isinstance(result, list):
+            return {"count": len(result), "items": result}
     except ImportError:
         LOGGER.info("RecommendationEngine not available; using fallback recommendations.")
     except Exception as exc:
@@ -506,17 +515,12 @@ def _chat_with_assistant(message: str, report: Dict[str, Any], conversation: Lis
     try:
         from we_si.ai.providers import AIAssistant  # type: ignore
 
-        try:
-            assistant = AIAssistant(api_key=api_key) if api_key else AIAssistant()
-        except TypeError:
-            assistant = AIAssistant()
-        for method_name in ("chat", "ask", "answer_question", "respond"):
-            method = getattr(assistant, method_name, None)
-            if callable(method):
-                try:
-                    return str(method(message=message, analysis=report, conversation=conversation))
-                except TypeError:
-                    return str(method(message, report, conversation))
+        assistant = AIAssistant()
+        result = assistant.chat(message, conversation, report)
+        if isinstance(result, dict) and result.get("response"):
+            return str(result["response"])
+        if isinstance(result, str):
+            return result
     except ImportError:
         LOGGER.info("AIAssistant not available; using fallback chat.")
     except Exception as exc:
@@ -828,6 +832,9 @@ def create_app(config: dict = None) -> Flask:
     final_config["MAX_DEPTH_DEFAULT"] = _safe_int(final_config.get("MAX_DEPTH_DEFAULT"), 3)
     app.config.update(final_config)
     app.secret_key = app.config["FLASK_SECRET_KEY"]
+    os.environ["DATABASE_URL"] = str(app.config["DATABASE_URL"])
+    if app.config.get("WESI_ENCRYPTION_KEY"):
+        os.environ["WESI_ENCRYPTION_KEY"] = str(app.config["WESI_ENCRYPTION_KEY"])
 
     models = _get_models()
     Base = models["Base"]
@@ -862,7 +869,7 @@ def create_app(config: dict = None) -> Flask:
             db_status = "ok"
         except Exception as exc:
             LOGGER.exception("Health check database failure")
-            return jsonify({"status": "error", "database": "error", "detail": str(exc)}), 500
+            return jsonify({"status": "error", "database": "error"}), 500
         return jsonify(
             {
                 "status": "ok",
@@ -878,7 +885,7 @@ def create_app(config: dict = None) -> Flask:
             base_url = _normalize_url(payload.get("url", ""))
             max_pages = _safe_int(payload.get("max_pages"), app.config["MAX_PAGES_DEFAULT"])
             if max_pages <= 0:
-                raise ValueError("max_pages must be greater than 0.")
+                raise ValueError("max_pages must be a positive integer.")
             max_depth = app.config["MAX_DEPTH_DEFAULT"]
             created = _create_analysis_record(base_url, max_pages, max_depth)
             analysis = created["analysis"]
@@ -902,7 +909,7 @@ def create_app(config: dict = None) -> Flask:
                     "status": status.get("status", "unknown"),
                     "progress": round(float(status.get("progress", 0.0)), 2),
                     "current_step": status.get("current_step", "Waiting"),
-                    "error_message": status.get("error_message"),
+                    "error_message": status.get("error_message") or status.get("error"),
                 }
             )
         except Exception as exc:
@@ -1053,7 +1060,7 @@ def create_app(config: dict = None) -> Flask:
                             "status": status.get("status", "unknown"),
                             "progress": round(float(status.get("progress", 0.0)), 2),
                             "current_step": status.get("current_step", "Working"),
-                            "error_message": status.get("error_message") or analysis.error_message,
+                            "error_message": status.get("error_message") or status.get("error") or analysis.error_message,
                         }
                     else:
                         payload = {
@@ -1115,7 +1122,7 @@ def create_app(config: dict = None) -> Flask:
             base_url = _normalize_url(url_value)
             max_pages = _safe_int(request.args.get("max_pages"), app.config["MAX_PAGES_DEFAULT"])
             if max_pages <= 0:
-                raise ValueError("max_pages must be greater than 0.")
+                raise ValueError("max_pages must be a positive integer.")
             max_depth = app.config["MAX_DEPTH_DEFAULT"]
             created = _create_analysis_record(base_url, max_pages, max_depth)
             analysis = created["analysis"]
@@ -1150,4 +1157,5 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    _debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    app.run(debug=_debug)

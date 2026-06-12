@@ -897,12 +897,9 @@ class RecommendationEngine:
                 return fallback
             if max_length == 160:
                 response = self._fit_meta_description(response)
-            elif len(response) < min_length:
-                return fallback
+                return response if len(response) >= min_length else fallback
             if len(response) < min_length:
                 return fallback
-            if max_length == 160:
-                return response
             return self._limit_length(response, max_length)
         except Exception:
             return fallback

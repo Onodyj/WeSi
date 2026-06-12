@@ -3,18 +3,15 @@ beautifulsoup4==4.12.3
 requests==2.31.0
 lxml==5.1.0
 urllib3==2.2.0
-Flask==3.0.0
-flask-cors==5.0.0
-SQLAlchemy==2.0.23
 
 # Database
-sqlalchemy==2.0.23
+SQLAlchemy==2.0.23
 
 # Security (encrypted API key storage)
 cryptography==41.0.7
 
 # Web API framework
-flask==3.0.0
+Flask==3.0.0
 flask-cors==4.0.0
 
 # Async processing (optional — thread-based fallback used when not configured)

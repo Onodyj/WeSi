@@ -887,7 +887,11 @@ class SiteIQScorer:
 
     def _valid_heading_hierarchy(self, headings: dict) -> bool:
         counts = (headings.get("counts") or {}) if isinstance(headings, dict) else {}
-        levels = sorted(int(level[1:]) for level, count in counts.items() if count)
+        levels = sorted(
+            int(level[1:]) for level, count in counts.items()
+            if isinstance(level, str) and len(level) == 2 and level[0] == "h" and level[1:].isdigit()
+            and isinstance(count, int) and count > 0
+        )
         if not levels:
             return False
         return all((current - previous) <= 1 for previous, current in zip(levels, levels[1:]))
@@ -939,7 +943,7 @@ class SiteIQScorer:
         snippet = self._normalize_whitespace(text)[:200]
         if not snippet:
             return ""
-        return hashlib.sha1(snippet.encode("utf-8")).hexdigest()
+        return hashlib.sha256(snippet.encode("utf-8")).hexdigest()
 
     def _normalize_whitespace(self, text: str) -> str:
         return re.sub(r"\s+", " ", text or "").strip()

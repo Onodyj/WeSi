@@ -1,0 +1,731 @@
+{% extends "base.html" %}
+
+{% block title %}SiteIQ — Results Dashboard{% endblock %}
+
+{% block extra_css %}
+.dashboard-grid {
+    display: grid;
+    gap: 1.5rem;
+}
+.score-gauge {
+    --score: 0;
+    width: 14rem;
+    height: 14rem;
+    margin-inline: auto;
+    border-radius: 50%;
+    background: conic-gradient(var(--siq-brand) calc(var(--score) * 1%), rgba(148, 163, 184, 0.16) 0);
+    display: grid;
+    place-items: center;
+    box-shadow: inset 0 0 0 1px var(--siq-border), var(--siq-card-shadow);
+}
+.score-gauge::before {
+    content: "";
+    width: 10.25rem;
+    height: 10.25rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--bs-body-bg) 96%, transparent);
+    border: 1px solid var(--siq-border);
+    position: absolute;
+}
+.score-gauge-inner {
+    position: relative;
+    text-align: center;
+}
+.score-number {
+    font-size: 3rem;
+    font-weight: 800;
+    line-height: 1;
+}
+.grade-pill {
+    min-width: 4rem;
+}
+.pillar-score-row {
+    cursor: pointer;
+    border-radius: 1rem;
+    padding: 0.75rem;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+.pillar-score-row:hover {
+    background: var(--siq-bg-soft);
+    transform: translateY(-2px);
+}
+.recommendation-card {
+    border: 1px solid var(--siq-border);
+    border-radius: 1.25rem;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.recommendation-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--siq-card-shadow-hover);
+}
+.fix-box {
+    position: relative;
+    background: rgba(13, 110, 253, 0.08);
+    border: 1px solid rgba(13, 110, 253, 0.18);
+    border-radius: 1rem;
+}
+.fix-box pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-bottom: 0;
+    font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+.chat-messages {
+    max-height: 26rem;
+    overflow: auto;
+}
+.chat-bubble {
+    border-radius: 1rem;
+    padding: 0.85rem 1rem;
+    max-width: 90%;
+}
+.chat-bubble.user {
+    background: rgba(13, 110, 253, 0.12);
+    margin-left: auto;
+}
+.chat-bubble.assistant {
+    background: var(--siq-bg-soft);
+    border: 1px solid var(--siq-border);
+}
+.expandable-details {
+    background: var(--siq-bg-soft);
+}
+.page-detail-shell {
+    background: var(--siq-bg-soft);
+    border-radius: 1rem;
+    border: 1px solid var(--siq-border);
+}
+.section-anchor {
+    scroll-margin-top: 6rem;
+}
+.text-bg-orange {
+    background-color: #fd7e14 !important;
+    color: #fff !important;
+}
+{% endblock %}
+
+{% block content %}
+<div class="container dashboard-grid">
+    <section class="section-card">
+        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-4">
+            <div class="d-flex align-items-center gap-3">
+                <img id="domainFavicon" src="" alt="Favicon" width="40" height="40" class="rounded-3 border d-none">
+                <div>
+                    <div class="small text-uppercase soft-label">Analysis overview</div>
+                    <h1 class="h2 mb-1" id="domainName">Loading domain…</h1>
+                    <div class="soft-label">Analyzed <span id="analysisDate">—</span></div>
+                </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-primary rounded-pill" id="reanalyzeButton" href="/">Re-analyze</a>
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary rounded-pill dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Download Report
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item export-link" data-format="html" href="#">HTML</a></li>
+                        <li><a class="dropdown-item export-link" data-format="text" href="#">Text</a></li>
+                        <li><a class="dropdown-item export-link" data-format="json" href="#">JSON</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="row g-4">
+        <div class="col-xl-4">
+            <div class="section-card h-100 text-center">
+                <div class="small text-uppercase soft-label mb-3">SiteIQ Score</div>
+                <div class="score-gauge position-relative" id="scoreGauge" style="--score: 0;">
+                    <div class="score-gauge-inner">
+                        <div class="score-number" id="overallScore">0</div>
+                        <div class="soft-label">Overall</div>
+                    </div>
+                </div>
+                <div class="mt-4 d-flex justify-content-center">
+                    <span class="badge grade-pill fs-6 rounded-pill" id="overallGrade">Grade —</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-8">
+            <div class="section-card h-100">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div>
+                        <h2 class="h4 mb-1">Pillar score overview</h2>
+                        <p class="soft-label mb-0">Click a pillar to jump to detailed analysis.</p>
+                    </div>
+                </div>
+                <div id="pillarScores" class="d-grid gap-2"></div>
+                <hr class="my-4">
+                <canvas id="pillarChart" height="160"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <section class="section-card section-anchor" id="recommendationsSection">
+        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-4">
+            <div>
+                <h2 class="h3 mb-1">Recommendations</h2>
+                <p class="soft-label mb-0">Prioritized fixes with rationale, implementation notes, and CMS-specific steps.</p>
+            </div>
+            <div class="btn-group flex-wrap" role="group" aria-label="Recommendation filters">
+                <button class="btn btn-outline-secondary active rec-filter" data-filter="all" type="button">All</button>
+                <button class="btn btn-outline-danger rec-filter" data-filter="critical" type="button">Critical</button>
+                <button class="btn btn-outline-warning rec-filter" data-filter="high" type="button">High</button>
+                <button class="btn btn-outline-primary rec-filter" data-filter="medium" type="button">Medium</button>
+                <button class="btn btn-outline-success rec-filter" data-filter="low" type="button">Low</button>
+            </div>
+        </div>
+        <div id="recommendationsList" class="d-grid gap-4"></div>
+    </section>
+
+    <section class="section-card section-anchor" id="pillarAnalysisSection">
+        <div class="mb-4">
+            <h2 class="h3 mb-1">Detailed pillar analysis</h2>
+            <p class="soft-label mb-0">Open any tab to review issues and passed checks for each pillar.</p>
+        </div>
+        <ul class="nav nav-pills flex-nowrap overflow-auto pb-2" id="pillarTabs" role="tablist"></ul>
+        <div class="tab-content pt-4" id="pillarTabContent"></div>
+    </section>
+
+    <section class="row g-4">
+        <div class="col-xl-5">
+            <div class="section-card h-100 section-anchor" id="chatSection">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    <div>
+                        <h2 class="h4 mb-1">AI Chat Assistant</h2>
+                        <p class="soft-label mb-0">Ask follow-up questions or generate an action plan. Falls back to rule-based suggestions when AI is unavailable.</p>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary rounded-pill" id="actionPlanButton" type="button">Generate Action Plan</button>
+                </div>
+                <div id="chatMessages" class="chat-messages d-grid gap-3 mb-3"></div>
+                <form id="chatForm" class="d-flex gap-2">
+                    <input type="text" id="chatInput" class="form-control rounded-pill" placeholder="Ask SiteIQ what to fix next…" autocomplete="off">
+                    <button class="btn btn-brand rounded-pill px-4" type="submit">Send</button>
+                </form>
+            </div>
+        </div>
+        <div class="col-xl-7">
+            <div class="section-card h-100 section-anchor" id="pagesSection">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    <div>
+                        <h2 class="h4 mb-1">Pages analyzed</h2>
+                        <p class="soft-label mb-0">Every crawled page, with expandable row details and pillar scores.</p>
+                    </div>
+                    <span class="badge rounded-pill text-bg-primary-subtle text-primary-emphasis" id="pageCountBadge">0 pages</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th>URL</th>
+                                <th>Status</th>
+                                <th>Depth</th>
+                                <th>Pillar Scores</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="pagesTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+    (() => {
+        const analysisId = {{ analysis_id|tojson }};
+        const pillars = [
+            { key: 'on_page_seo', label: 'On-Page SEO' },
+            { key: 'content_quality', label: 'Content Quality' },
+            { key: 'technical_seo', label: 'Technical SEO' },
+            { key: 'authority', label: 'Authority' },
+            { key: 'ux_design', label: 'UX & Design' },
+            { key: 'links_architecture', label: 'Links & Architecture' },
+        ];
+        const cmsNames = ['wordpress', 'squarespace', 'wix', 'generic'];
+        const severityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+        let recommendations = [];
+        let chartInstance = null;
+        const state = {
+            metadata: {},
+            scores: {},
+            recommendations: [],
+            pillars: {},
+            pages: [],
+        };
+
+        const elements = {
+            domainName: document.getElementById('domainName'),
+            analysisDate: document.getElementById('analysisDate'),
+            domainFavicon: document.getElementById('domainFavicon'),
+            overallScore: document.getElementById('overallScore'),
+            overallGrade: document.getElementById('overallGrade'),
+            scoreGauge: document.getElementById('scoreGauge'),
+            pillarScores: document.getElementById('pillarScores'),
+            recommendationsList: document.getElementById('recommendationsList'),
+            pillarTabs: document.getElementById('pillarTabs'),
+            pillarTabContent: document.getElementById('pillarTabContent'),
+            chatMessages: document.getElementById('chatMessages'),
+            chatForm: document.getElementById('chatForm'),
+            chatInput: document.getElementById('chatInput'),
+            actionPlanButton: document.getElementById('actionPlanButton'),
+            pagesTableBody: document.getElementById('pagesTableBody'),
+            pageCountBadge: document.getElementById('pageCountBadge'),
+        };
+
+        function gradeFromScore(score) {
+            if (score >= 90) return { grade: 'A', badge: 'text-bg-success' };
+            if (score >= 80) return { grade: 'B', badge: 'text-bg-primary' };
+            if (score >= 70) return { grade: 'C', badge: 'text-bg-warning' };
+            if (score >= 60) return { grade: 'D', badge: 'text-bg-orange text-dark' };
+            return { grade: 'F', badge: 'text-bg-danger' };
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function toTitleCase(value) {
+            return String(value || '').replace(/[_-]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+        }
+
+        function slugify(value) {
+            return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        }
+
+        function formatDate(value) {
+            if (!value) return '—';
+            const date = new Date(value);
+            return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+        }
+
+        function pillarValue(scoreMap, key) {
+            const value = scoreMap?.[key] ?? scoreMap?.[slugify(key)] ?? scoreMap?.[key.replace(/_/g, '-')] ?? 0;
+            if (typeof value === 'number') return value;
+            if (typeof value === 'object' && value !== null) return Number(value.score ?? value.value ?? 0);
+            return Number(value || 0);
+        }
+
+        function recommendationPlacement(rec) {
+            return rec.placement_instructions || rec.placement || rec.platform_help || 'Apply the fix at the template or page level where this issue appears, then verify the affected URL after publishing.';
+        }
+
+        function recommendationFix(rec) {
+            return rec.exact_fix || rec.fix || rec.suggestion || rec.action || 'Review the page, apply the recommended update, and re-run the analysis.';
+        }
+
+        function recommendationWhy(rec) {
+            return rec.why_it_matters || rec.why || rec.plain_language || 'Addressing this issue should improve clarity for users and strengthen search visibility.';
+        }
+
+        function recommendationImpact(rec) {
+            return rec.estimated_impact || rec.impact || 'Meaningful';
+        }
+
+        function recommendationPillar(rec) {
+            return rec.pillar || rec.category || 'General';
+        }
+
+        function recommendationCmsSteps(rec) {
+            const source = rec.cms_steps || rec.cms || {};
+            const genericHelp = recommendationPlacement(rec);
+            return {
+                wordpress: source.wordpress || rec.wordpress_steps || 'Open the relevant page or template, update the affected SEO or content field, save, and validate on the live page.',
+                squarespace: source.squarespace || rec.squarespace_steps || 'Use page settings or the site editor to update the affected content, SEO fields, or media settings, then republish.',
+                wix: source.wix || rec.wix_steps || 'Open the page in Wix Editor, adjust the relevant SEO, content, or image setting, publish, then verify.',
+                generic: source.generic || rec.generic_steps || genericHelp,
+            };
+        }
+
+        function addChatMessage(role, message) {
+            const wrapper = document.createElement('div');
+            wrapper.className = `chat-bubble ${role}`;
+            wrapper.innerHTML = `<div class="small text-uppercase soft-label mb-1">${role === 'user' ? 'You' : 'SiteIQ'}</div><div>${escapeHtml(message).replace(/\n/g, '<br>')}</div>`;
+            elements.chatMessages.appendChild(wrapper);
+            elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+        }
+
+        function buildRuleBasedReply(prompt) {
+            const text = prompt.toLowerCase();
+            if (text.includes('action plan')) {
+                return [
+                    '1. Fix critical issues affecting templates or high-traffic pages first.',
+                    '2. Improve titles, descriptions, H1 usage, and alt text on priority pages.',
+                    '3. Address crawl-depth, broken links, and internal linking gaps.',
+                    '4. Re-run SiteIQ and compare score changes before moving to lower-impact items.'
+                ].join('\n');
+            }
+            const topRecommendations = state.recommendations.slice(0, 3).map((rec, index) => `${index + 1}. ${rec.issue || rec.description || rec.suggestion || 'Review recommendation details.'}`);
+            return topRecommendations.length
+                ? `Here are the highest-priority next steps:\n${topRecommendations.join('\n')}`
+                : 'SiteIQ can help interpret the dashboard. Try asking which issue to fix first, how to improve a specific pillar, or generate an action plan.';
+        }
+
+        async function fetchJson(url) {
+            const response = await fetch(url, { cache: 'no-store' });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.error || data.message || `Request failed: ${url}`);
+            }
+            return data;
+        }
+
+        function renderHeader() {
+            const domain = state.metadata.domain || state.metadata.site || state.metadata.base_url || 'Site under analysis';
+            elements.domainName.textContent = domain;
+            elements.analysisDate.textContent = formatDate(state.metadata.analysis_date || state.metadata.created_at || state.metadata.date);
+            const faviconDomain = state.metadata.base_url || state.metadata.url || (String(domain).startsWith('http') ? domain : `https://${domain}`);
+            try {
+                const hostname = new URL(faviconDomain).hostname;
+                elements.domainFavicon.src = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=128`;
+                elements.domainFavicon.classList.remove('d-none');
+            } catch {
+                elements.domainFavicon.classList.add('d-none');
+            }
+            document.querySelectorAll('.export-link').forEach((link) => {
+                const format = link.dataset.format;
+                link.href = `/api/analysis/${encodeURIComponent(analysisId)}/report.${format}`;
+            });
+            document.getElementById('reanalyzeButton').href = `/?url=${encodeURIComponent(state.metadata.base_url || '')}`;
+        }
+
+        function renderScoreOverview() {
+            const overall = Number(state.scores.overall_score ?? state.scores.overall ?? state.metadata.overall_score ?? 0);
+            const grade = gradeFromScore(overall);
+            elements.overallScore.textContent = Math.round(overall);
+            elements.scoreGauge.style.setProperty('--score', Math.max(0, Math.min(100, overall)));
+            elements.overallGrade.className = `badge grade-pill fs-6 rounded-pill ${grade.badge}`;
+            elements.overallGrade.textContent = `Grade ${grade.grade}`;
+
+            elements.pillarScores.innerHTML = pillars.map((pillar) => {
+                const score = pillarValue(state.scores.pillars || state.scores, pillar.key);
+                const pillarGrade = gradeFromScore(score);
+                return `
+                    <button class="pillar-score-row border-0 bg-transparent text-start" data-target="pillar-${slugify(pillar.key)}">
+                        <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
+                            <div class="fw-semibold">${pillar.label}</div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge rounded-pill ${pillarGrade.badge}">${pillarGrade.grade}</span>
+                                <span class="fw-semibold">${Math.round(score)}</span>
+                            </div>
+                        </div>
+                        <div class="progress" style="height: 0.75rem; border-radius: 999px; background: rgba(148, 163, 184, 0.18);">
+                            <div class="progress-bar" role="progressbar" style="width: ${Math.max(0, Math.min(100, score))}%; background: linear-gradient(90deg, var(--siq-brand), var(--siq-brand-2));"></div>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+
+            elements.pillarScores.querySelectorAll('[data-target]').forEach((button, index) => {
+                button.addEventListener('click', () => {
+                    const tabTrigger = document.querySelector(`#pillarTabs button[data-bs-target="#${button.dataset.target}"]`);
+                    if (tabTrigger) {
+                        bootstrap.Tab.getOrCreateInstance(tabTrigger).show();
+                        document.getElementById('pillarAnalysisSection').scrollIntoView({ behavior: 'smooth' });
+                    } else {
+                        document.getElementById(button.dataset.target)?.scrollIntoView({ behavior: 'smooth' });
+                    }
+                });
+            });
+
+            const ctx = document.getElementById('pillarChart');
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+            chartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: pillars.map((pillar) => pillar.label),
+                    datasets: [{
+                        label: 'Pillar Scores',
+                        data: pillars.map((pillar) => Math.round(pillarValue(state.scores.pillars || state.scores, pillar.key))),
+                        fill: true,
+                        backgroundColor: 'rgba(111, 66, 193, 0.16)',
+                        borderColor: '#6f42c1',
+                        pointBackgroundColor: '#0d6efd',
+                        pointRadius: 4,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: { stepSize: 20, backdropColor: 'transparent' },
+                            grid: { color: 'rgba(148, 163, 184, 0.25)' },
+                            angleLines: { color: 'rgba(148, 163, 184, 0.25)' },
+                        },
+                    },
+                },
+            });
+        }
+
+        function renderRecommendations(filter = 'all') {
+            const filtered = recommendations.filter((rec) => filter === 'all' || String(rec.severity || rec.priority || 'medium').toLowerCase() === filter);
+            if (!filtered.length) {
+                elements.recommendationsList.innerHTML = '<div class="alert alert-light border rounded-4">No recommendations available for this filter.</div>';
+                return;
+            }
+            elements.recommendationsList.innerHTML = filtered.map((rec, index) => {
+                const severity = String(rec.severity || rec.priority || 'medium').toLowerCase();
+                const pillar = recommendationPillar(rec);
+                const collapseId = `why-${index}-${slugify(pillar)}`;
+                const steps = recommendationCmsSteps(rec);
+                const tabsId = `cms-tabs-${index}`;
+                const paneId = (name) => `${tabsId}-${name}`;
+                return `
+                    <article class="recommendation-card p-4" data-severity="${escapeHtml(severity)}">
+                        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+                            <div>
+                                <div class="d-flex flex-wrap gap-2 mb-2">
+                                    <span class="badge rounded-pill text-bg-primary-subtle text-primary-emphasis">${escapeHtml(toTitleCase(pillar))}</span>
+                                    <span class="badge rounded-pill ${severity === 'critical' ? 'text-bg-danger' : severity === 'high' ? 'text-bg-warning' : severity === 'medium' ? 'text-bg-primary' : 'text-bg-success'}">${escapeHtml(toTitleCase(severity))}</span>
+                                    <span class="badge rounded-pill text-bg-secondary">Impact: ${escapeHtml(recommendationImpact(rec))}</span>
+                                </div>
+                                <h3 class="h5 mb-2">${escapeHtml(rec.issue || rec.title || rec.description || 'Recommendation')}</h3>
+                                <p class="soft-label mb-0">${escapeHtml(rec.description || rec.summary || rec.suggestion || '')}</p>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false">Why it matters</button>
+                            </div>
+                        </div>
+                        <div class="collapse mb-3" id="${collapseId}">
+                            <div class="p-3 rounded-4 expandable-details">${escapeHtml(recommendationWhy(rec))}</div>
+                        </div>
+                        <div class="fix-box p-3 mb-3">
+                            <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+                                <strong>Exact Fix</strong>
+                                <button class="btn btn-sm btn-outline-primary rounded-pill copy-fix" type="button" data-copy="${escapeHtml(recommendationFix(rec))}">Copy</button>
+                            </div>
+                            <pre>${escapeHtml(recommendationFix(rec))}</pre>
+                        </div>
+                        <div class="mb-3">
+                            <strong class="d-block mb-2">Placement Instructions</strong>
+                            <div class="p-3 rounded-4 expandable-details">${escapeHtml(recommendationPlacement(rec))}</div>
+                        </div>
+                        <div>
+                            <ul class="nav nav-tabs" id="${tabsId}" role="tablist">
+                                ${cmsNames.map((name, cmsIndex) => `
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link ${cmsIndex === 0 ? 'active' : ''}" data-bs-toggle="tab" data-bs-target="#${paneId(name)}" type="button" role="tab">${name === 'generic' ? 'Generic' : toTitleCase(name)}</button>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                            <div class="tab-content border border-top-0 rounded-bottom-4 p-3">
+                                ${cmsNames.map((name, cmsIndex) => `
+                                    <div class="tab-pane fade ${cmsIndex === 0 ? 'show active' : ''}" id="${paneId(name)}" role="tabpanel">
+                                        ${escapeHtml(steps[name])}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+
+            elements.recommendationsList.querySelectorAll('.copy-fix').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    try {
+                        await navigator.clipboard.writeText(button.dataset.copy || '');
+                        const original = button.textContent;
+                        button.textContent = 'Copied';
+                        window.setTimeout(() => { button.textContent = original; }, 1400);
+                    } catch {
+                        button.textContent = 'Copy failed';
+                        window.setTimeout(() => { button.textContent = 'Copy'; }, 1400);
+                    }
+                });
+            });
+        }
+
+        function renderPillarAnalysis() {
+            elements.pillarTabs.innerHTML = pillars.map((pillar, index) => `
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link ${index === 0 ? 'active' : ''}" id="tab-${slugify(pillar.key)}" data-bs-toggle="pill" data-bs-target="#pillar-${slugify(pillar.key)}" type="button" role="tab">${pillar.label}</button>
+                </li>
+            `).join('');
+
+            elements.pillarTabContent.innerHTML = pillars.map((pillar, index) => {
+                const data = state.pillars[pillar.key] || state.pillars[slugify(pillar.key)] || {};
+                const score = Number(data.score ?? pillarValue(state.scores.pillars || state.scores, pillar.key));
+                const issues = data.issues || data.findings || [];
+                const passed = data.passed_checks || data.good_practices || data.passes || [];
+                return `
+                    <div class="tab-pane fade ${index === 0 ? 'show active' : ''}" id="pillar-${slugify(pillar.key)}" role="tabpanel">
+                        <div class="row g-4">
+                            <div class="col-lg-4">
+                                <div class="card border-0 h-100" style="background: var(--siq-bg-soft);">
+                                    <div class="card-body">
+                                        <div class="small text-uppercase soft-label mb-2">Pillar score</div>
+                                        <div class="display-6 fw-bold mb-2">${Math.round(score)}</div>
+                                        <span class="badge rounded-pill ${gradeFromScore(score).badge}">Grade ${gradeFromScore(score).grade}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-lg-4">
+                                <div class="card border-0 h-100" style="background: var(--siq-bg-soft);">
+                                    <div class="card-body">
+                                        <h3 class="h6">Issues</h3>
+                                        <ul class="mb-0 ps-3">
+                                            ${(issues.length ? issues : ['No issues reported.']).map((item) => `<li>${escapeHtml(typeof item === 'string' ? item : item.issue || item.description || JSON.stringify(item))}</li>`).join('')}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-lg-4">
+                                <div class="card border-0 h-100" style="background: var(--siq-bg-soft);">
+                                    <div class="card-body">
+                                        <h3 class="h6">Passed checks</h3>
+                                        <ul class="mb-0 ps-3">
+                                            ${(passed.length ? passed : ['No passed checks reported yet.']).map((item) => `<li>${escapeHtml(typeof item === 'string' ? item : item.check || item.description || JSON.stringify(item))}</li>`).join('')}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderPages() {
+            const pages = state.pages || [];
+            elements.pageCountBadge.textContent = `${pages.length} page${pages.length === 1 ? '' : 's'}`;
+            if (!pages.length) {
+                elements.pagesTableBody.innerHTML = '<tr><td colspan="5" class="text-center soft-label py-4">No page crawl data available.</td></tr>';
+                return;
+            }
+            elements.pagesTableBody.innerHTML = pages.map((page, index) => {
+                const detailId = `page-detail-${index}`;
+                const scoreMap = page.pillar_scores || page.scores || {};
+                return `
+                    <tr>
+                        <td class="text-break" style="max-width: 24rem;">${escapeHtml(page.url || page.page_url || 'Unknown URL')}</td>
+                        <td><span class="badge rounded-pill ${Number(page.status_code) >= 400 ? 'text-bg-danger' : 'text-bg-success'}">${escapeHtml(page.status_code || '—')}</span></td>
+                        <td>${escapeHtml(page.depth ?? '—')}</td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-1">
+                                ${pillars.map((pillar) => `<span class="badge text-bg-light border">${escapeHtml(pillar.label.split(' ')[0])}: ${Math.round(pillarValue(scoreMap, pillar.key))}</span>`).join('')}
+                            </div>
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-secondary rounded-pill" type="button" data-bs-toggle="collapse" data-bs-target="#${detailId}" aria-expanded="false">Details</button>
+                        </td>
+                    </tr>
+                    <tr class="collapse" id="${detailId}">
+                        <td colspan="5" class="pt-0 border-0">
+                            <div class="page-detail-shell p-3 mt-2">
+                                <div class="row g-3">
+                                    <div class="col-lg-4">
+                                        <h3 class="h6">Overview</h3>
+                                        <ul class="small ps-3 mb-0">
+                                            <li>Load time: ${escapeHtml(page.load_time ? `${Number(page.load_time).toFixed(2)}s` : '—')}</li>
+                                            <li>Word count: ${escapeHtml(page.seo?.word_count ?? page.word_count ?? '—')}</li>
+                                            <li>Canonical: ${escapeHtml(page.seo?.canonical_url || page.canonical_url || '—')}</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-lg-4">
+                                        <h3 class="h6">Issues</h3>
+                                        <ul class="small ps-3 mb-0">
+                                            ${((page.issues || page.suggestions || []).slice(0, 5).map((item) => `<li>${escapeHtml(typeof item === 'string' ? item : item.issue || item.suggestion || item.description || JSON.stringify(item))}</li>`).join('')) || '<li>No page-specific issues listed.</li>'}
+                                        </ul>
+                                    </div>
+                                    <div class="col-lg-4">
+                                        <h3 class="h6">SEO snippets</h3>
+                                        <ul class="small ps-3 mb-0">
+                                            <li>Title: ${escapeHtml(page.seo?.title || '—')}</li>
+                                            <li>Description: ${escapeHtml(page.seo?.meta_description || '—')}</li>
+                                            <li>H1 count: ${escapeHtml(page.headings?.h1_count ?? '—')}</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function sendChatMessage(message) {
+            addChatMessage('user', message);
+            const fallback = buildRuleBasedReply(message);
+            try {
+                const response = await fetch(`/api/analysis/${encodeURIComponent(analysisId)}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.error || data.message || 'Chat unavailable');
+                }
+                addChatMessage('assistant', data.reply || data.message || fallback);
+            } catch {
+                addChatMessage('assistant', fallback);
+            }
+        }
+
+        async function initialize() {
+            addChatMessage('assistant', 'Welcome to SiteIQ. Ask what to fix first, how a recommendation helps SEO, or generate an action plan.');
+            try {
+                const [summary, scores, recs, pillarData, pages] = await Promise.all([
+                    fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}`),
+                    fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}/scores`),
+                    fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}/recommendations`),
+                    fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}/pillars`),
+                    fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}/pages`),
+                ]);
+
+                state.metadata = summary.metadata || summary.analysis || summary;
+                state.scores = scores.scores || scores;
+                state.recommendations = (recs.recommendations || recs.items || recs || []).slice().sort((a, b) => (severityOrder[String(b.severity || b.priority || 'low').toLowerCase()] || 0) - (severityOrder[String(a.severity || a.priority || 'low').toLowerCase()] || 0));
+                state.pillars = pillarData.pillars || pillarData;
+                state.pages = pages.pages || pages.items || pages;
+                recommendations = state.recommendations;
+
+                renderHeader();
+                renderScoreOverview();
+                renderRecommendations();
+                renderPillarAnalysis();
+                renderPages();
+            } catch (error) {
+                document.querySelector('.dashboard-grid').innerHTML = `<div class="alert alert-danger">${escapeHtml(error.message || 'Unable to load dashboard data.')}</div>`;
+            }
+        }
+
+        document.querySelectorAll('.rec-filter').forEach((button) => {
+            button.addEventListener('click', () => {
+                document.querySelectorAll('.rec-filter').forEach((btn) => btn.classList.remove('active'));
+                button.classList.add('active');
+                renderRecommendations(button.dataset.filter || 'all');
+            });
+        });
+
+        elements.chatForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const message = elements.chatInput.value.trim();
+            if (!message) return;
+            elements.chatInput.value = '';
+            await sendChatMessage(message);
+        });
+
+        elements.actionPlanButton.addEventListener('click', async () => {
+            await sendChatMessage('Generate Action Plan');
+        });
+
+        initialize();
+    })();
+</script>
+{% endblock %}
