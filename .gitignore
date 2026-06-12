@@ -38,7 +38,6 @@ htmlcov/
 
 # Output files
 *.json
-!example_*.json
 
 # Temp files
 *.tmp
