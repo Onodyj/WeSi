@@ -27,3 +27,11 @@ google-auth-oauthlib==1.1.0
 
 # Playwright (optional for JS rendering)
 playwright==1.40.0
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+
+# Optional chatbot dependencies (install as needed)
+# For OpenAI chatbot: pip install openai
+# For Anthropic chatbot: pip install anthropic
+# For Google chatbot: pip install google-generativeai

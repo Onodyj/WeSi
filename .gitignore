@@ -24,6 +24,7 @@ wheels/
 venv/
 ENV/
 env/
+.env
 
 # IDE
 .vscode/
@@ -38,7 +39,6 @@ htmlcov/
 
 # Output files
 *.json
-!example_*.json
 
 # Temp files
 *.tmp
@@ -51,3 +51,9 @@ htmlcov/
 # Celery
 celerybeat-schedule
 celerybeat.pid
+# Database files
+*.db
+*.db-journal
+
+# Reports
+reports/

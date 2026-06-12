@@ -302,6 +302,17 @@ python -m unittest discover tests/
 
 ### Project Structure (old content preserved below)
 
+## 🤖 NEW: AI Chatbot Integration
+
+WeSi now includes an integrated AI chatbot that allows you to interactively query and discuss your website analysis results! Ask questions about your SEO, content quality, and get actionable recommendations.
+
+**Supported AI Providers:**
+- OpenAI (GPT-3.5, GPT-4)
+- Anthropic (Claude)
+- Google (Gemini)
+
+See [CHATBOT.md](CHATBOT.md) for full documentation.
+
 ## Features
 
 WeSi provides detailed analysis of your website including:
@@ -369,6 +380,18 @@ cd WeSi
 pip install -r requirements.txt
 ```
 
+3. (Optional) For chatbot functionality, install AI provider:
+```bash
+# For OpenAI
+pip install openai
+
+# For Anthropic Claude
+pip install anthropic
+
+# For Google Gemini
+pip install google-generativeai
+```
+
 ## Usage
 
 ### Basic Usage
@@ -378,22 +401,41 @@ Analyze a website with default settings (max 50 pages):
 python wesi.py https://example.com
 ```
 
+### Chatbot Mode
+
+Analyze and chat about your results:
+```bash
+python wesi.py https://example.com --chat --provider openai
+```
+
+Chat with existing analysis:
+```bash
+python wesi.py --chat-only --analysis website_analysis.json --provider openai
+```
+
 ### Custom Options
 
 Specify maximum pages and custom output file:
 ```bash
-python wesi.py https://example.com 10 my_report.json
+python wesi.py https://example.com --max-pages 10 --output my_report.json
 ```
 
 ### Command Line Arguments
 
 ```
-python wesi.py <website_url> [max_pages] [output_file]
+python wesi.py [url] [options]
 
-Arguments:
-  website_url  - The URL of the website to analyze (required)
-  max_pages    - Maximum number of pages to crawl (default: 50)
-  output_file  - Output JSON file name (default: website_analysis.json)
+Positional Arguments:
+  url                  - The URL of the website to analyze
+
+Options:
+  --max-pages N        - Maximum number of pages to crawl (default: 50)
+  --output FILE        - Output JSON file name (default: website_analysis.json)
+  --chat               - Launch chatbot after analysis
+  --chat-only          - Launch chatbot without analysis (requires --analysis)
+  --analysis FILE      - Path to existing analysis file (for --chat-only)
+  --provider PROVIDER  - Chatbot provider: openai, anthropic, google (default: openai)
+  --model MODEL        - Specific model to use with chatbot
 ```
 
 ## Output
@@ -566,6 +608,48 @@ Average word count: 487
 3. **Prioritize Critical Issues**: Address critical findings first
 4. **Regular Audits**: Run periodically to track improvements
 5. **Respect Robots.txt**: Ensure you have permission to crawl the site
+
+## API Server (NEW!)
+
+WeSi now includes a REST API server for asynchronous website analysis with API key authentication!
+
+### Quick Start
+
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Create an API key:**
+   ```bash
+   python scripts/add_api_key.py --key "your-secret-key" --owner "Your Name"
+   ```
+
+3. **Start the API server:**
+   ```bash
+   python api/server.py
+   ```
+
+4. **Submit an analysis job:**
+   ```bash
+   curl -X POST "http://localhost:8000/analyze" \
+     -H "X-API-Key: your-secret-key" \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://example.com", "max_pages": 10}'
+   ```
+
+### Features
+
+- 🔐 **API Key Authentication**: Secure access with API keys
+- ⚡ **Asynchronous Processing**: Submit jobs and check status later
+- 💾 **SQLite Persistence**: Jobs and results stored in database
+- 🤖 **Background Worker**: Automatic processing of pending jobs
+- 📊 **Job Tracking**: Monitor job status and retrieve reports
+- 📚 **Interactive Docs**: Auto-generated API docs at `/docs`
+
+### Documentation
+
+For detailed API documentation, examples, and usage instructions, see [API_README.md](API_README.md).
 
 ## Contributing
 
