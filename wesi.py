@@ -7,17 +7,55 @@ A comprehensive tool to map and analyze website structure, content, and SEO.
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
+from urllib.robotparser import RobotFileParser
 from collections import Counter, defaultdict
 import json
 import re
 import sys
+import os
+import logging
 from typing import Dict, List, Set, Tuple, Any
 import time
+
+
+def validate_url(url: str) -> bool:
+    """
+    Validate URL format, accepting both with and without schemes.
+    
+    Args:
+        url: URL to validate
+        
+    Returns:
+        True if URL has at least a netloc (domain), False otherwise
+    """
+    if not url:
+        return False
+    
+    parsed = urlparse(url)
+    # Accept URLs with netloc (domain present)
+    if parsed.netloc:
+        return True
+    
+    # For schemeless URLs, check if path looks like a domain
+    # Must have at least one dot and no slashes before the first dot
+    if parsed.path and not parsed.scheme:
+        # Split by slash and check the first part
+        first_part = parsed.path.split('/')[0]
+        # Valid if it contains a dot, doesn't start with a dot, and has reasonable length
+        # Check that both parts around the dot have at least 2 chars
+        if '.' in first_part and not first_part.startswith('.'):
+            parts = first_part.split('.')
+            # At least one part should have 2+ chars for a valid domain
+            if any(len(part) >= 2 for part in parts) and len(first_part) > 3:
+                return True
+    
+    return False
 
 
 class WebsiteAnalyzer:
     """Comprehensive website analyzer for structure, content, and SEO analysis."""
     
+    def __init__(self, base_url: str, max_pages: int = 50, timeout: int = 10, delay: float = None):
     @staticmethod
     def validate_url(url: str) -> bool:
         """
@@ -43,9 +81,29 @@ class WebsiteAnalyzer:
             base_url: The base URL of the website to analyze
             max_pages: Maximum number of pages to crawl (default: 50)
             timeout: Request timeout in seconds (default: 10)
+            delay: Politeness delay between requests in seconds (default: 0.5 or from WEBSI_DELAY env var)
         """
+        # Initialize logger
+        self.logger = logging.getLogger(__name__)
+        
+        # Auto-prepend scheme if missing
+        if not urlparse(base_url).scheme:
+            base_url = 'http://' + base_url
+            self.logger.info(f"Auto-prepended scheme to base URL: {base_url}")
+        
+        # Validate URL
+        if not validate_url(base_url):
+            raise ValueError(f"Invalid URL: {base_url}")
         # Validate URL before proceeding
         if not self.validate_url(base_url):
+            raise ValueError(f"Invalid URL: {base_url}. Please provide a valid HTTP or HTTPS URL.")
+        
+        self.base_url = base_url.rstrip('/')
+        self.domain = urlparse(base_url).netloc
+        
+        if not self.domain:
+            raise ValueError(f"Could not extract domain from URL: {base_url}")
+        
             raise ValueError(f"Invalid URL: '{base_url}'. URL must have http:// or https:// scheme and a valid domain.")
         
         # Extract domain
@@ -58,6 +116,17 @@ class WebsiteAnalyzer:
         self.domain = domain
         self.max_pages = max_pages
         self.timeout = timeout
+        
+        # Set crawl delay from parameter, env var, or default
+        if delay is not None:
+            self.delay = delay
+        else:
+            try:
+                self.delay = float(os.environ.get('WEBSI_DELAY', '0.5'))
+            except ValueError:
+                self.logger.warning(f"Invalid WEBSI_DELAY value, using default 0.5")
+                self.delay = 0.5
+        
         self.visited_urls: Set[str] = set()
         self.pages_data: List[Dict] = []
         self.broken_links: List[Dict] = []
@@ -65,6 +134,65 @@ class WebsiteAnalyzer:
         self.session.headers.update({
             'User-Agent': 'WeSi-Bot/1.0 (Website Analyzer)'
         })
+        
+        # Initialize robots.txt parser
+        self.robots_parser = None
+        self._load_robots_txt()
+    
+    def _load_robots_txt(self):
+        """Load and parse robots.txt if available."""
+        try:
+            robots_url = urljoin(self.base_url, '/robots.txt')
+            self.logger.debug(f"Fetching robots.txt from: {robots_url}")
+            
+            response = self.session.get(robots_url, timeout=self.timeout)
+            if response.status_code == 200:
+                self.robots_parser = RobotFileParser()
+                self.robots_parser.set_url(robots_url)
+                # Parse the robots.txt content
+                self.robots_parser.parse(response.text.splitlines())
+                self.logger.info(f"Successfully loaded robots.txt from {robots_url}")
+            else:
+                self.logger.debug(f"No robots.txt found (status: {response.status_code})")
+        except Exception as e:
+            self.logger.debug(f"Could not load robots.txt: {e}")
+    
+    def is_allowed_by_robots(self, url: str) -> bool:
+        """
+        Check if URL is allowed by robots.txt.
+        
+        Args:
+            url: URL to check
+            
+        Returns:
+            True if allowed or no robots.txt, False if disallowed
+        """
+        if self.robots_parser is None:
+            return True
+        
+        try:
+            user_agent = self.session.headers.get('User-Agent', '*')
+            return self.robots_parser.can_fetch(user_agent, url)
+        except Exception as e:
+            self.logger.debug(f"Error checking robots.txt for {url}: {e}")
+            return True
+    
+    @staticmethod
+    def validate_url(url: str) -> bool:
+        """
+        Validate if a URL is properly formatted.
+        
+        Args:
+            url: The URL to validate
+            
+        Returns:
+            True if the URL is valid, False otherwise
+        """
+        try:
+            result = urlparse(url)
+            return all([result.scheme in ('http', 'https'), result.netloc])
+        except Exception:
+            return False
     
     def is_internal_url(self, url: str) -> bool:
         """Check if a URL is internal to the base domain."""
@@ -72,12 +200,34 @@ class WebsiteAnalyzer:
         return parsed.netloc == self.domain or parsed.netloc == ''
     
     def normalize_url(self, url: str) -> str:
-        """Normalize URL by removing fragments and trailing slashes."""
-        parsed = urlparse(url)
-        normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-        if parsed.query:
-            normalized += f"?{parsed.query}"
-        return normalized.rstrip('/')
+        """Normalize URL by removing fragments and trailing slashes, handling missing schemes."""
+        # Handle relative URLs or URLs without scheme by joining with base_url
+        # But preserve absolute URLs from other domains
+        parsed_input = urlparse(url)
+        
+        # If URL has a scheme and netloc, it's absolute - use as-is
+        if parsed_input.scheme and parsed_input.netloc:
+            parsed = parsed_input
+        # If URL has no scheme but starts with //, treat as protocol-relative
+        elif url.startswith('//'):
+            parsed = urlparse(url)
+        # Otherwise, treat as relative and join with base
+        else:
+            url = urljoin(self.base_url, url)
+            parsed = urlparse(url)
+        
+        # Build normalized URL with scheme and netloc
+        if parsed.scheme and parsed.netloc:
+            normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+            # Note: params come before query in URL structure (path;params?query)
+            if parsed.params:
+                normalized += f";{parsed.params}"
+            if parsed.query:
+                normalized += f"?{parsed.query}"
+            return normalized.rstrip('/')
+        
+        # If still no scheme/netloc, return as-is (edge case)
+        return url.rstrip('/')
     
     def _create_empty_page_data(self, url: str, error_msg: str = 'Failed to fetch page', status_code: int = 0) -> Dict:
         """
@@ -165,7 +315,7 @@ class WebsiteAnalyzer:
             response = self.session.get(url, timeout=self.timeout, allow_redirects=True)
             return response.text, response.status_code
         except requests.RequestException as e:
-            print(f"Error fetching {url}: {e}", file=sys.stderr)
+            self.logger.warning(f"Error fetching {url}: {e}")
             return "", 0
     
     def extract_text_content(self, soup: BeautifulSoup) -> str:
@@ -407,6 +557,101 @@ class WebsiteAnalyzer:
         
         return structure
     
+    def _create_empty_page_data(self, url: str, error: str, status_code: int = 0) -> Dict:
+        """Create empty page data structure for failed pages."""
+        return {
+            'url': url,
+            'error': error,
+            'status_code': status_code
+        }
+    
+    def analyze_page(self, url: str, verbose: bool = True) -> Dict:
+        """Perform comprehensive analysis of a single page."""
+        if verbose:
+            self.logger.info(f"Analyzing: {url}")
+    def _create_empty_page_data(self, url: str, error_msg: str = 'Failed to fetch page', status_code: int = 0) -> Dict:
+        """
+        Create an empty page data structure for failed page fetches.
+        
+        Args:
+            url: The URL that failed
+            error_msg: The error message to include
+            status_code: HTTP status code (0 for connection failures)
+            
+        Returns:
+            A dictionary with empty/default values for all expected fields
+        """
+        return {
+            'url': url,
+            'error': error_msg,
+            'status_code': status_code,
+            'text_length': 0,
+            'structure': {
+                'has_header': False,
+                'has_footer': False,
+                'has_nav': False,
+                'has_main': False,
+                'has_article': False,
+                'has_aside': False,
+                'nav_count': 0,
+                'article_count': 0,
+                'section_count': 0,
+                'div_count': 0,
+                'form_count': 0,
+                'table_count': 0,
+                'list_count': 0,
+                'semantic_elements_used': []
+            },
+            'headings': {
+                'hierarchy': {f'h{i}': [] for i in range(1, 7)},
+                'counts': {f'h{i}': 0 for i in range(1, 7)},
+                'h1_count': 0,
+                'has_multiple_h1': False
+            },
+            'images': {
+                'count': 0,
+                'images': [],
+                'missing_alt': [],
+                'missing_alt_count': 0
+            },
+            'links': {
+                'internal': [],
+                'external': [],
+                'total_internal': 0,
+                'total_external': 0,
+                'total': 0
+            },
+            'broken_links': [],
+            'seo': {
+                'title': '',
+                'title_length': 0,
+                'meta_description': '',
+                'meta_description_length': 0,
+                'meta_keywords': '',
+                'meta_robots': '',
+                'canonical_url': '',
+                'language': '',
+                'all_meta_tags': {},
+                'open_graph': {},
+                'twitter_card': {},
+                'word_count': 0,
+                'top_keywords': {},
+                'keyword_density': {},
+                'has_title': False,
+                'has_meta_description': False,
+                'title_optimal': False,
+                'description_optimal': False
+            }
+        }
+    
+    def analyze_page(self, url: str, verbose: bool = True) -> Dict:
+        """
+        Perform comprehensive analysis of a single page.
+        
+        Args:
+            url: The URL to analyze
+            verbose: If True, print status message (default: True)
+        """
     def analyze_page(self, url: str, verbose: bool = True) -> Dict:
         """Perform comprehensive analysis of a single page."""
         if verbose:
@@ -414,6 +659,7 @@ class WebsiteAnalyzer:
         
         content, status_code = self.fetch_page(url)
         if status_code == 0 or not content:
+            # Return a consistent structure even when fetch fails
             return self._create_empty_page_data(url, 'Failed to fetch page', status_code)
         
         soup = BeautifulSoup(content, 'lxml')
@@ -459,8 +705,33 @@ class WebsiteAnalyzer:
             if normalized in self.visited_urls:
                 continue
             
+            # Check robots.txt before crawling
+            if not self.is_allowed_by_robots(normalized):
+                self.logger.info(f"Skipping {normalized} (disallowed by robots.txt)")
+                continue
+            
             self.visited_urls.add(normalized)
             
+            # Show progress with truncated URL if needed
+            progress = f"[{len(self.visited_urls)}/{self.max_pages}]"
+            display_url = f"{normalized[:80]}..." if len(normalized) > 80 else normalized
+            print(f"{progress} Analyzing: {display_url}")
+            
+            try:
+                page_data = self.analyze_page(normalized, verbose=False)
+                self.pages_data.append(page_data)
+                
+                # Only add internal links if page was successfully fetched
+                if not page_data.get('error') and 'links' in page_data and 'internal' in page_data['links']:
+                    for link in page_data['links']['internal']:
+                        link_url = self.normalize_url(link['absolute_url'])
+                        if link_url not in self.visited_urls and link_url not in to_visit:
+                            to_visit.append(link_url)
+            except Exception as e:
+                print(f"  ⚠️  Error analyzing page: {e}")
+                # Use helper method for consistent error structure
+                error_data = self._create_empty_page_data(normalized, str(e), 0)
+                self.pages_data.append(error_data)
             # Print progress with truncated URL if needed
             visited_count = len(self.visited_urls)
             display_url = normalized if len(normalized) <= 80 else normalized[:77] + '...'
@@ -481,11 +752,15 @@ class WebsiteAnalyzer:
                 for link in page_data['links']['internal']:
                     link_url = self.normalize_url(link['absolute_url'])
                     if link_url not in self.visited_urls and link_url not in to_visit:
-                        to_visit.append(link_url)
+                        # Check robots.txt before enqueueing
+                        if self.is_allowed_by_robots(link_url):
+                            to_visit.append(link_url)
             
             # Be nice to the server
+            time.sleep(self.delay)
             time.sleep(0.5)
         
+        print(f"\nCrawl complete! Analyzed {len(self.visited_urls)} page(s).")
         # Print completion message
         print(f"\nCrawl complete! Analyzed {len(self.pages_data)} page(s).")
     
@@ -627,24 +902,44 @@ class WebsiteAnalyzer:
         report = self.generate_report()
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
-        print(f"\nReport saved to: {filename}")
+        self.logger.info(f"Report saved to: {filename}")
         return filename
 
 
 def main():
     """Main entry point for the CLI."""
+    # Configure logging
+    log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
     if len(sys.argv) < 2:
         print("Usage: python wesi.py <website_url> [max_pages] [output_file]")
         print("\nExample:")
         print("  python wesi.py https://example.com 10 report.json")
+        print("  python wesi.py example.com 10 report.json  # scheme will be auto-prepended")
         print("\nOptions:")
         print("  website_url  - The URL of the website to analyze (required)")
         print("  max_pages    - Maximum number of pages to crawl (default: 50)")
         print("  output_file  - Output JSON file name (default: website_analysis.json)")
+        print("\nEnvironment Variables:")
+        print("  LOG_LEVEL    - Set logging level: DEBUG, INFO, WARNING, ERROR (default: INFO)")
+        print("  WEBSI_DELAY  - Set crawl delay in seconds (default: 0.5)")
         sys.exit(1)
     
     url = sys.argv[1]
     
+    # Validate max_pages argument
+    try:
+        max_pages = int(sys.argv[2]) if len(sys.argv) > 2 else 50
+        if max_pages <= 0:
+            print("Error: max_pages must be a positive integer")
+            sys.exit(1)
+    except ValueError:
+        print(f"Error: max_pages must be an integer, got '{sys.argv[2]}'")
+        sys.exit(1)
     # Validate and parse max_pages
     max_pages = 50  # default
     if len(sys.argv) > 2:
@@ -662,6 +957,11 @@ def main():
     print(f"Starting analysis of {url}")
     print(f"Maximum pages to crawl: {max_pages}\n")
     
+    try:
+        analyzer = WebsiteAnalyzer(url, max_pages=max_pages)
+        analyzer.crawl()
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
     # Initialize analyzer with error handling
     try:
         analyzer = WebsiteAnalyzer(url, max_pages=max_pages)
@@ -672,6 +972,14 @@ def main():
         print(f"Unexpected error initializing analyzer: {e}")
         sys.exit(1)
     
+    try:
+        analyzer.crawl()
+    except Exception as e:
+        print(f"\nError during crawling: {e}")
+        print("Attempting to generate report with collected data...")
+    
+    if not analyzer.pages_data:
+        print("\nError: No pages were successfully analyzed. Please check the URL and try again.")
     # Crawl with error handling
     try:
         analyzer.crawl()

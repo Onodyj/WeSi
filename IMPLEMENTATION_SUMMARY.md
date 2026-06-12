@@ -26,7 +26,7 @@ This pull request implements a complete API server infrastructure for the WeSi w
 - Three tables: `api_keys`, `jobs`, `audit_logs`
 - Thread-safe connection handling with context managers
 - Helper functions for all CRUD operations
-- Configurable database path via `WEBSI_DB_PATH` environment variable
+- Configurable database path via `WESI_DB_PATH` environment variable
 
 ### 2. CLI Key Management (scripts/add_api_key.py)
 - Add new API keys with owner information

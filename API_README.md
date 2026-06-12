@@ -197,7 +197,7 @@ The API uses SQLite for persistence with the following tables:
 - **jobs**: Stores analysis jobs and their status
 - **audit_logs**: Logs all API actions for auditing
 
-Database location can be configured with the `WEBSI_DB_PATH` environment variable (defaults to `data/wesi.db`).
+Database location can be configured with the `WESI_DB_PATH` environment variable (defaults to `data/wesi.db`).
 
 ## Configuration
 
@@ -205,7 +205,7 @@ Set environment variables in a `.env` file or export them:
 
 ```bash
 # Database path
-export WEBSI_DB_PATH=/path/to/custom/wesi.db
+export WESI_DB_PATH=/path/to/custom/wesi.db
 
 # Server settings (used by server.py arguments)
 export WESI_HOST=0.0.0.0
