@@ -24,6 +24,7 @@ wheels/
 venv/
 ENV/
 env/
+.env
 
 # IDE
 .vscode/
@@ -55,3 +56,16 @@ htmlcov/
 
 # SiteIQ runtime
 siteiq.db
+# Environment and secrets
+.env
+*.db
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+# Database files
+*.db
+*.db-journal
+
+# Reports
+reports/

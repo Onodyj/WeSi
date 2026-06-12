@@ -7,3 +7,5 @@ __version__ = '3.0.0'
 __name_human__ = 'SiteIQ'
 
 __all__ = ["RecommendationEngine", "SiteIQScorer", "score_to_grade", "score_to_label"]
+"""WeSi - Website Analyzer Package"""
+__version__ = '2.0.0'
