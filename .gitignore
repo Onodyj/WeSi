@@ -38,8 +38,11 @@ htmlcov/
 
 # Output files
 *.json
-!example_*.json
 
 # Temp files
 *.tmp
 *.log
+
+# Database files
+*.db
+*.db-journal
