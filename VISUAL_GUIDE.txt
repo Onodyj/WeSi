@@ -1,0 +1,115 @@
+╔════════════════════════════════════════════════════════════════╗
+║           WeSi Chatbot - Visual Testing Guide                 ║
+╔════════════════════════════════════════════════════════════════╝
+
+📁 STEP 1: Find the WeSi Folder
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Look for the folder where you downloaded/cloned WeSi.
+It should contain these files:
+  ✓ quick_test.py
+  ✓ run_demo.bat (Windows)
+  ✓ run_demo.sh (Mac/Linux)
+  ✓ chatbot.py
+  ✓ wesi.py
+
+
+�� STEP 2: Choose Your Method
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+METHOD A: Double-Click (Easiest!)
+┌────────────────────────────────────────────────────────────────┐
+│ Windows Users:                                                 │
+│   1. Find: run_demo.bat                                        │
+│   2. Double-click it                                           │
+│   3. A black window opens → Start typing!                      │
+│                                                                │
+│ Mac/Linux Users:                                               │
+│   1. Find: run_demo.sh                                         │
+│   2. Right-click → Open With → Terminal                        │
+│   3. Terminal opens → Start typing!                            │
+└────────────────────────────────────────────────────────────────┘
+
+METHOD B: Terminal Commands
+┌────────────────────────────────────────────────────────────────┐
+│ 1. Open Terminal:                                              │
+│    Windows: Win+R, type "cmd", press Enter                     │
+│    Mac: Cmd+Space, type "terminal", press Enter               │
+│    Linux: Ctrl+Alt+T                                           │
+│                                                                │
+│ 2. Navigate to WeSi folder:                                    │
+│    cd /path/to/WeSi                                            │
+│    (Example: cd C:\Users\You\Documents\WeSi)                   │
+│                                                                │
+│ 3. Run the demo:                                               │
+│    python3 quick_test.py                                       │
+│    (Or: python quick_test.py)                                  │
+└────────────────────────────────────────────────────────────────┘
+
+
+💬 STEP 3: Chat with the Bot
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You'll see:
+  ══════════════════════════════════════════════════════════════
+  WeSi Chatbot - DEMO MODE (No API Key Required)
+  ══════════════════════════════════════════════════════════════
+  
+  You: █
+
+Now type any of these:
+  ✓ help                           → See what you can ask
+  ✓ give me a summary              → Analysis overview
+  ✓ what are the critical issues?  → Important problems
+  ✓ tell me about images           → Image analysis
+  ✓ quit                           → Exit
+
+Example conversation:
+  You: give me a summary
+  
+  Assistant: 📊 Website Analysis Summary
+  URL: https://example.com
+  Pages Analyzed: 1
+  ...
+  
+  You: what are critical issues?
+  
+  Assistant: 🔴 Critical Issues Found:
+  1. 1 page(s) missing title tags...
+  
+  You: quit
+  
+  👋 Goodbye!
+
+
+❓ TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Problem: "python3: command not found"
+Solution: Try "python quick_test.py" instead
+
+Problem: "No such file or directory"  
+Solution: You're not in the WeSi folder
+         → cd /path/to/WeSi first
+
+Problem: "No module named 'chatbot'"
+Solution: Make sure you're in the folder that contains chatbot.py
+         → ls (Mac/Linux) or dir (Windows) to check
+
+Problem: Nothing happens when double-clicking
+Solution: Use Method B (Terminal Commands) instead
+
+
+📚 MORE HELP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+See these files for detailed help:
+  • START_HERE.md       → Quickest instructions
+  • HOW_TO_RUN.md       → Complete guide with examples
+  • TESTING_GUIDE.md    → Testing with real AI
+  • QUICKSTART_TESTING.md → Visual quick reference
+
+
+🎯 THAT'S IT!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You're now testing the chatbot! No code editing required.
+These are commands you RUN, not code you write.
+
+╚════════════════════════════════════════════════════════════════╝

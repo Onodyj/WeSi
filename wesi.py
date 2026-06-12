@@ -908,6 +908,69 @@ class WebsiteAnalyzer:
 
 def main():
     """Main entry point for the CLI."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description="WeSi - Website Analyzer with integrated chatbot",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python wesi.py https://example.com
+  python wesi.py https://example.com --max-pages 10
+  python wesi.py https://example.com --chat --provider openai
+  python wesi.py --chat-only --analysis report.json --provider anthropic
+        """
+    )
+    
+    parser.add_argument(
+        'url',
+        nargs='?',
+        help='Website URL to analyze'
+    )
+    parser.add_argument(
+        '--max-pages',
+        type=int,
+        default=50,
+        help='Maximum number of pages to crawl (default: 50)'
+    )
+    parser.add_argument(
+        '--output',
+        default='website_analysis.json',
+        help='Output JSON file name (default: website_analysis.json)'
+    )
+    parser.add_argument(
+        '--chat',
+        action='store_true',
+        help='Launch chatbot after analysis'
+    )
+    parser.add_argument(
+        '--chat-only',
+        action='store_true',
+        help='Launch chatbot without running analysis (requires --analysis)'
+    )
+    parser.add_argument(
+        '--analysis',
+        help='Path to existing analysis JSON file (for --chat-only mode)'
+    )
+    parser.add_argument(
+        '--provider',
+        choices=['openai', 'anthropic', 'google'],
+        default='openai',
+        help='Chatbot provider (default: openai)'
+    )
+    parser.add_argument(
+        '--model',
+        help='Model name for chatbot provider'
+    )
+    
+    args = parser.parse_args()
+    
+    # Handle chat-only mode
+    if args.chat_only:
+        if not args.analysis:
+            print("Error: --chat-only requires --analysis <file>")
+            sys.exit(1)
+        
     # Configure logging
     log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
     logging.basicConfig(
@@ -944,15 +1007,47 @@ def main():
     max_pages = 50  # default
     if len(sys.argv) > 2:
         try:
-            max_pages = int(sys.argv[2])
-            if max_pages <= 0:
-                print(f"Error: max_pages must be a positive integer, got: {sys.argv[2]}")
-                sys.exit(1)
-        except ValueError:
-            print(f"Error: max_pages must be a valid integer, got: {sys.argv[2]}")
+            from chatbot import create_chatbot, interactive_chat_session
+            
+            # Load analysis data
+            with open(args.analysis, 'r', encoding='utf-8') as f:
+                analysis_data = json.load(f)
+            
+            print(f"Loaded analysis from: {args.analysis}")
+            
+            # Create and launch chatbot
+            chatbot = create_chatbot(
+                provider=args.provider,
+                model=args.model,
+                analysis_data=analysis_data
+            )
+            interactive_chat_session(chatbot)
+            
+        except FileNotFoundError:
+            print(f"Error: Analysis file not found: {args.analysis}")
             sys.exit(1)
+        except ImportError as e:
+            print(f"Error: Chatbot dependencies not installed.")
+            print(f"Install with: pip install openai anthropic google-generativeai")
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error launching chatbot: {e}")
+            sys.exit(1)
+        
+        return
     
-    output_file = sys.argv[3] if len(sys.argv) > 3 else 'website_analysis.json'
+    # Regular analysis mode
+    if not args.url:
+        parser.print_help()
+        sys.exit(1)
+    
+    url = args.url
+    max_pages = args.max_pages
+    output_file = args.output
+    
+    if max_pages <= 0:
+        print(f"Error: max_pages must be a positive integer, got: {max_pages}")
+        sys.exit(1)
     
     print(f"Starting analysis of {url}")
     print(f"Maximum pages to crawl: {max_pages}\n")
@@ -1035,6 +1130,30 @@ def main():
     
     analyzer.save_report(output_file)
     print(f"\n✅ Full detailed report saved to: {output_file}")
+    
+    # Launch chatbot if requested
+    if args.chat:
+        print("\n" + "="*70)
+        print("Launching chatbot...")
+        print("="*70)
+        
+        try:
+            from chatbot import create_chatbot, interactive_chat_session
+            
+            chatbot = create_chatbot(
+                provider=args.provider,
+                model=args.model,
+                analysis_data=report
+            )
+            interactive_chat_session(chatbot)
+            
+        except ImportError as e:
+            print(f"\nError: Chatbot dependencies not installed.")
+            print(f"Install with: pip install openai anthropic google-generativeai")
+            print(f"Or use --chat-only later with the saved report.")
+        except Exception as e:
+            print(f"\nError launching chatbot: {e}")
+            print(f"You can use --chat-only later with: python wesi.py --chat-only --analysis {output_file}")
 
 
 if __name__ == '__main__':

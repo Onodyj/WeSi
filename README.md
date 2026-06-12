@@ -2,6 +2,17 @@
 
 A comprehensive Python tool to map, analyze, and audit websites for structure, content quality, and SEO optimization.
 
+## 🤖 NEW: AI Chatbot Integration
+
+WeSi now includes an integrated AI chatbot that allows you to interactively query and discuss your website analysis results! Ask questions about your SEO, content quality, and get actionable recommendations.
+
+**Supported AI Providers:**
+- OpenAI (GPT-3.5, GPT-4)
+- Anthropic (Claude)
+- Google (Gemini)
+
+See [CHATBOT.md](CHATBOT.md) for full documentation.
+
 ## Features
 
 WeSi provides detailed analysis of your website including:
@@ -69,6 +80,18 @@ cd WeSi
 pip install -r requirements.txt
 ```
 
+3. (Optional) For chatbot functionality, install AI provider:
+```bash
+# For OpenAI
+pip install openai
+
+# For Anthropic Claude
+pip install anthropic
+
+# For Google Gemini
+pip install google-generativeai
+```
+
 ## Usage
 
 ### Basic Usage
@@ -78,22 +101,41 @@ Analyze a website with default settings (max 50 pages):
 python wesi.py https://example.com
 ```
 
+### Chatbot Mode
+
+Analyze and chat about your results:
+```bash
+python wesi.py https://example.com --chat --provider openai
+```
+
+Chat with existing analysis:
+```bash
+python wesi.py --chat-only --analysis website_analysis.json --provider openai
+```
+
 ### Custom Options
 
 Specify maximum pages and custom output file:
 ```bash
-python wesi.py https://example.com 10 my_report.json
+python wesi.py https://example.com --max-pages 10 --output my_report.json
 ```
 
 ### Command Line Arguments
 
 ```
-python wesi.py <website_url> [max_pages] [output_file]
+python wesi.py [url] [options]
 
-Arguments:
-  website_url  - The URL of the website to analyze (required)
-  max_pages    - Maximum number of pages to crawl (default: 50)
-  output_file  - Output JSON file name (default: website_analysis.json)
+Positional Arguments:
+  url                  - The URL of the website to analyze
+
+Options:
+  --max-pages N        - Maximum number of pages to crawl (default: 50)
+  --output FILE        - Output JSON file name (default: website_analysis.json)
+  --chat               - Launch chatbot after analysis
+  --chat-only          - Launch chatbot without analysis (requires --analysis)
+  --analysis FILE      - Path to existing analysis file (for --chat-only)
+  --provider PROVIDER  - Chatbot provider: openai, anthropic, google (default: openai)
+  --model MODEL        - Specific model to use with chatbot
 ```
 
 ## Output
