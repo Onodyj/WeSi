@@ -1,6 +1,306 @@
 # WeSi - Website Analyzer
 
-A comprehensive Python tool to map, analyze, and audit websites for structure, content quality, and SEO optimization.
+A comprehensive Python-based website analysis platform that provides detailed SEO, accessibility, and performance insights with AI-powered recommendations.
+
+## ⚡ Quick Start
+
+### For CLI Users (Simple)
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Analyze a website (works just like v1.0)
+python wesi.py https://example.com 10 report.json
+```
+
+### For API Platform (Full Features)
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Configure environment
+python config_helper.py
+
+# 3. Start all services
+./start_wesi.sh
+
+# API now available at http://localhost:5000
+```
+
+### Try the Examples
+```bash
+# See new features in action
+python example_v2_usage.py
+```
+
+## Features
+
+### 🚀 Version 2.0 - Full Site Analysis Platform
+
+WeSi now provides enterprise-grade website analysis with advanced features:
+
+### 🏗️ Full-Site Crawler
+- **Intelligent Crawling**: Respects robots.txt and rate limits
+- **Configurable Depth**: Control crawl depth and page limits based on subscription
+- **URL Normalization**: Automatic deduplication and canonicalization
+- **Same-Origin Policy**: Stays within your domain automatically
+- **Optional JS Rendering**: Playwright support for client-side rendered pages
+
+### 🔍 Enhanced Analysis
+- **CMS Detection**: Automatically identifies WordPress, Squarespace, Wix, Shopify, and more
+- **Comprehensive SEO**: Title tags, meta descriptions, keywords, Open Graph, Twitter Cards
+- **Accessibility Audit**: WCAG compliance checking, alt text validation, semantic HTML analysis
+- **Structured Data**: JSON-LD extraction and validation
+- **Performance Metrics**: Load time tracking per page
+- **Content Analysis**: Word count, keyword density, readability
+
+### 📊 Multiple Report Formats
+- **HTML Reports**: Beautiful, styled reports with executive summaries and detailed breakdowns
+- **Text Reports**: CLI/email-friendly plain text summaries
+- **Google Docs**: Auto-generated formatted Google Docs (requires API setup)
+- **JSON Export**: Machine-readable data for integrations
+
+### 🤖 AI Assistant Integration
+- **Context-Aware**: Uses your actual site data, not generic responses
+- **Plain Language**: Explains technical issues in simple terms
+- **Platform-Specific**: Provides Squarespace, WordPress, Wix-specific instructions
+- **Conversation History**: Maintains context across follow-up questions
+- **Action Plans**: Generates prioritized improvement roadmaps
+
+### 🔒 Secure API Key Storage
+- **Encrypted Storage**: Fernet-based encryption for API keys at rest
+- **User Keys**: Users can provide their own OpenAI/Google API keys
+- **Environment Isolation**: Keys never exposed in API responses
+
+### 💼 Subscription Tiers
+- **Free**: 10 pages/run, 5 analyses/month, basic reports
+- **Standard**: 50 pages/run, 20 analyses/month, AI assistant, Google Docs
+- **Full**: 200 pages/run, 100 analyses/month, all features
+
+### ⚡ Asynchronous Processing
+- **Background Jobs**: Celery-based task queue with Redis
+- **Real-time Progress**: WebSocket/SSE support for live updates
+- **Job Management**: Query job status, pause, resume capabilities
+
+## Installation
+
+### Prerequisites
+- Python 3.7+
+- Redis (for async processing)
+- Optional: Playwright (for JS rendering)
+- Optional: Google Cloud credentials (for Google Docs integration)
+
+### Basic Setup
+
+1. Clone the repository:
+```bash
+git clone https://github.com/Onodyj/WeSi.git
+cd WeSi
+```
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Set up environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+4. Generate encryption key:
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Add the output to .env as WESI_ENCRYPTION_KEY
+```
+
+5. Initialize the database:
+```bash
+python -c "from we_si.models import init_db; init_db()"
+```
+
+### Optional: Playwright Setup
+
+For JavaScript-rendered pages:
+```bash
+playwright install chromium
+```
+
+### Optional: Google Docs API Setup
+
+1. Create a Google Cloud project
+2. Enable Google Docs API
+3. Create a service account
+4. Download credentials JSON
+5. Set path in .env: `GOOGLE_DOCS_CREDENTIALS=/path/to/credentials.json`
+
+## Usage
+
+### Running the API Server
+
+1. Start Redis:
+```bash
+redis-server
+```
+
+2. Start Celery worker:
+```bash
+celery -A we_si.tasks worker --loglevel=info
+```
+
+3. Start Flask API:
+```bash
+python we_si/api.py
+```
+
+The API will be available at `http://localhost:5000`
+
+### Legacy CLI Usage
+
+The original CLI tool is still available:
+
+```bash
+python wesi.py https://example.com 10 report.json
+```
+
+### API Endpoints
+
+#### Start Analysis
+```bash
+POST /api/analyze
+{
+  "user_id": 1,
+  "base_url": "https://example.com",
+  "max_pages": 50,
+  "max_depth": 3
+}
+```
+
+#### Check Status
+```bash
+GET /api/status/<job_id>
+```
+
+#### Get Results
+```bash
+GET /api/analysis/<site_analysis_id>
+```
+
+#### Download Report
+```bash
+GET /api/analysis/<site_analysis_id>/report/html
+GET /api/analysis/<site_analysis_id>/report/text
+GET /api/analysis/<site_analysis_id>/report/json
+```
+
+#### AI Assistant Chat
+```bash
+POST /api/analysis/<site_analysis_id>/assistant/chat
+{
+  "user_id": 1,
+  "message": "How can I improve my SEO?",
+  "conversation_id": 123  // optional
+}
+```
+
+#### Manage API Keys
+```bash
+# List services
+GET /api/user/<user_id>/api-keys
+
+# Add/update key
+POST /api/user/<user_id>/api-keys
+{
+  "service": "openai",
+  "api_key": "sk-..."
+}
+
+# Delete key
+DELETE /api/user/<user_id>/api-keys/<service>
+```
+
+## Architecture
+
+```
+we_si/
+├── __init__.py
+├── crawler.py          # Enhanced crawler with robots.txt support
+├── analyzer.py         # Page analyzer with CMS detection
+├── models.py           # SQLAlchemy database models
+├── tasks.py            # Celery async tasks
+├── api.py              # Flask REST API
+├── storage/
+│   └── secrets.py      # Encrypted API key storage
+├── reports/
+│   ├── html_report.py  # HTML report generator
+│   ├── text_report.py  # Text report generator
+│   └── gdoc_report.py  # Google Docs generator
+└── ai/
+    └── assistant.py    # AI assistant integration
+
+tests/
+└── test_wesi.py        # Unit tests
+
+wesi.py                 # Legacy CLI tool (still functional)
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `FLASK_SECRET_KEY` | Yes | Flask session secret key |
+| `DATABASE_URL` | Yes | Database connection URL (default: sqlite:///wesi.db) |
+| `WESI_ENCRYPTION_KEY` | Yes | Fernet key for API key encryption |
+| `REDIS_URL` | Yes | Redis connection URL for Celery |
+| `OPENAI_API_KEY` | No | Server-side OpenAI key (users can provide their own) |
+| `GOOGLE_DOCS_CREDENTIALS` | No | Path to Google service account JSON |
+| `ENABLE_PLAYWRIGHT` | No | Enable JavaScript rendering (true/false) |
+
+## Database Models
+
+- **User**: User accounts
+- **Subscription**: Subscription tiers and limits
+- **APIKey**: Encrypted API keys
+- **SiteAnalysis**: Analysis jobs and results
+- **PageAnalysis**: Individual page data
+- **AssistantConversation**: AI chat history
+- **AssistantMessage**: Individual chat messages
+
+## Subscription Tiers
+
+### Free Tier
+- 10 pages per analysis
+- 5 analyses per month
+- Depth: 2 levels
+- Basic reports only
+
+### Standard Tier
+- 50 pages per analysis
+- 20 analyses per month
+- Depth: 3 levels
+- AI assistant access
+- Google Docs reports
+
+### Full Tier
+- 200 pages per analysis
+- 100 analyses per month
+- Depth: 5 levels
+- All features included
+- Priority support
+
+## Testing
+
+Run the test suite:
+```bash
+python -m pytest tests/
+# or
+python -m unittest discover tests/
+```
+
+## Development
+
+### Project Structure (old content preserved below)
 
 ## 🤖 NEW: AI Chatbot Integration
 
