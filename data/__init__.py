@@ -1,1 +1,1 @@
-"""Data package for WeSi database operations."""
+"""Data persistence package for WeSi API."""

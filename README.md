@@ -309,6 +309,48 @@ Average word count: 487
 4. **Regular Audits**: Run periodically to track improvements
 5. **Respect Robots.txt**: Ensure you have permission to crawl the site
 
+## API Server (NEW!)
+
+WeSi now includes a REST API server for asynchronous website analysis with API key authentication!
+
+### Quick Start
+
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Create an API key:**
+   ```bash
+   python scripts/add_api_key.py --key "your-secret-key" --owner "Your Name"
+   ```
+
+3. **Start the API server:**
+   ```bash
+   python api/server.py
+   ```
+
+4. **Submit an analysis job:**
+   ```bash
+   curl -X POST "http://localhost:8000/analyze" \
+     -H "X-API-Key: your-secret-key" \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://example.com", "max_pages": 10}'
+   ```
+
+### Features
+
+- 🔐 **API Key Authentication**: Secure access with API keys
+- ⚡ **Asynchronous Processing**: Submit jobs and check status later
+- 💾 **SQLite Persistence**: Jobs and results stored in database
+- 🤖 **Background Worker**: Automatic processing of pending jobs
+- 📊 **Job Tracking**: Monitor job status and retrieve reports
+- 📚 **Interactive Docs**: Auto-generated API docs at `/docs`
+
+### Documentation
+
+For detailed API documentation, examples, and usage instructions, see [API_README.md](API_README.md).
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues or pull requests.

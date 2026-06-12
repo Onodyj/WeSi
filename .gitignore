@@ -24,6 +24,7 @@ wheels/
 venv/
 ENV/
 env/
+.env
 
 # IDE
 .vscode/
@@ -46,3 +47,6 @@ htmlcov/
 # Database files
 *.db
 *.db-journal
+
+# Reports
+reports/
