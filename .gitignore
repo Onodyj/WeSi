@@ -39,11 +39,23 @@ htmlcov/
 
 # Output files
 *.json
+!example_*.json
+!siteiq_config.json
 
 # Temp files
 *.tmp
 *.log
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env
+
+# SiteIQ runtime
+siteiq.db
 # Environment and secrets
 .env
 *.db
