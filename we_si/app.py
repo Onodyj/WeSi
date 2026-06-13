@@ -6,7 +6,7 @@ import os
 import secrets
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -288,6 +288,34 @@ def get_or_create_demo_user(session) -> Any:
         )
     session.commit()
     return user
+
+
+def _demo_subscription_snapshot(session) -> Dict[str, Any]:
+    models = _get_models()
+    SiteAnalysis = models["SiteAnalysis"]
+    user = get_or_create_demo_user(session)
+    subscription = user.subscription
+    if subscription is None:
+        return {
+            "tier_name": "Free",
+            "max_pages_per_run": 10,
+            "max_analyses_per_month": 5,
+            "analyses_remaining": 5,
+        }
+
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    analyses_this_month = (
+        session.query(SiteAnalysis)
+        .filter(SiteAnalysis.user_id == user.id, SiteAnalysis.created_at >= month_start)
+        .count()
+    )
+    remaining = max(0, int(subscription.max_analyses_per_month or 0) - analyses_this_month)
+    return {
+        "tier_name": str(subscription.tier.value).capitalize(),
+        "max_pages_per_run": int(subscription.max_pages_per_run or 0),
+        "max_analyses_per_month": int(subscription.max_analyses_per_month or 0),
+        "analyses_remaining": remaining,
+    }
 
 
 def _db_session():
@@ -779,7 +807,7 @@ def _build_report_for_analysis(analysis: Any) -> Dict[str, Any]:
     }
 
 
-def _create_analysis_record(base_url: str, max_pages: int, max_depth: int) -> Dict[str, Any]:
+def _create_analysis_record(base_url: str, max_pages: int, max_depth: int, focus_url: Optional[str] = None) -> Dict[str, Any]:
     models = _get_models()
     SiteAnalysis = models["SiteAnalysis"]
     JobStatus = models["JobStatus"]
@@ -793,7 +821,11 @@ def _create_analysis_record(base_url: str, max_pages: int, max_depth: int) -> Di
         domain=parsed.netloc,
         status=JobStatus.PENDING,
         progress=0.0,
-        summary={"requested_max_pages": max_pages, "requested_max_depth": max_depth},
+        summary={
+            "requested_max_pages": max_pages,
+            "requested_max_depth": max_depth,
+            **({"requested_focus_url": focus_url} if focus_url else {}),
+        },
         insights={},
     )
     session.add(analysis)
@@ -886,8 +918,13 @@ def create_app(config: dict = None) -> Flask:
             max_pages = _safe_int(payload.get("max_pages"), app.config["MAX_PAGES_DEFAULT"])
             if max_pages <= 0:
                 raise ValueError("max_pages must be a positive integer.")
-            max_depth = app.config["MAX_DEPTH_DEFAULT"]
-            created = _create_analysis_record(base_url, max_pages, max_depth)
+            max_depth = _safe_int(payload.get("max_depth"), app.config["MAX_DEPTH_DEFAULT"])
+            if max_depth <= 0:
+                raise ValueError("max_depth must be a positive integer.")
+            focus_url = (payload.get("focus_url") or "").strip()
+            if focus_url:
+                focus_url = _normalize_url(focus_url)
+            created = _create_analysis_record(base_url, max_pages, max_depth, focus_url=focus_url or None)
             analysis = created["analysis"]
             user = created["user"]
             job_id = _start_analysis_job(app, analysis.id, base_url, user.id, max_pages, max_depth)
@@ -1111,7 +1148,15 @@ def create_app(config: dict = None) -> Flask:
 
     @app.route("/")
     def home() -> Any:
-        return _render_page("home.html", error=request.args.get("error"), max_pages_default=app.config["MAX_PAGES_DEFAULT"])
+        plan = _demo_subscription_snapshot(_db_session())
+        return _render_page(
+            "index.html",
+            error=request.args.get("error"),
+            url=request.args.get("url", ""),
+            max_pages_default=plan["max_pages_per_run"] or app.config["MAX_PAGES_DEFAULT"],
+            max_depth_default=app.config["MAX_DEPTH_DEFAULT"],
+            subscription_plan=plan,
+        )
 
     @app.route("/analyze")
     def analyze_page() -> Any:

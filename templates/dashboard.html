@@ -165,15 +165,32 @@
     <section class="section-card section-anchor" id="recommendationsSection">
         <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-4">
             <div>
-                <h2 class="h3 mb-1">Recommendations</h2>
+                <h2 class="h3 mb-1">Prioritized Action Plan</h2>
                 <p class="soft-label mb-0">Prioritized fixes with rationale, implementation notes, and CMS-specific steps.</p>
             </div>
-            <div class="btn-group flex-wrap" role="group" aria-label="Recommendation filters">
-                <button class="btn btn-outline-secondary active rec-filter" data-filter="all" type="button">All</button>
-                <button class="btn btn-outline-danger rec-filter" data-filter="critical" type="button">Critical</button>
-                <button class="btn btn-outline-warning rec-filter" data-filter="high" type="button">High</button>
-                <button class="btn btn-outline-primary rec-filter" data-filter="medium" type="button">Medium</button>
-                <button class="btn btn-outline-success rec-filter" data-filter="low" type="button">Low</button>
+            <div class="row g-2">
+                <div class="col-auto">
+                    <label class="form-label small mb-1" for="severityFilter">Severity</label>
+                    <select class="form-select form-select-sm" id="severityFilter">
+                        <option value="all">All</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small mb-1" for="pillarFilter">Pillar</label>
+                    <select class="form-select form-select-sm" id="pillarFilter">
+                        <option value="all">All pillars</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small mb-1" for="pageFilter">Page</label>
+                    <select class="form-select form-select-sm" id="pageFilter">
+                        <option value="all">All pages</option>
+                    </select>
+                </div>
             </div>
         </div>
         <div id="recommendationsList" class="d-grid gap-4"></div>
@@ -243,7 +260,7 @@
             { key: 'on_page_seo', label: 'On-Page SEO' },
             { key: 'content_quality', label: 'Content Quality' },
             { key: 'technical_seo', label: 'Technical SEO' },
-            { key: 'authority', label: 'Authority' },
+            { key: 'authority', label: 'Authority & Backlinks' },
             { key: 'ux_design', label: 'UX & Design' },
             { key: 'links_architecture', label: 'Links & Architecture' },
         ];
@@ -276,6 +293,9 @@
             actionPlanButton: document.getElementById('actionPlanButton'),
             pagesTableBody: document.getElementById('pagesTableBody'),
             pageCountBadge: document.getElementById('pageCountBadge'),
+            severityFilter: document.getElementById('severityFilter'),
+            pillarFilter: document.getElementById('pillarFilter'),
+            pageFilter: document.getElementById('pageFilter'),
         };
 
         function gradeFromScore(score) {
@@ -334,6 +354,24 @@
 
         function recommendationPillar(rec) {
             return rec.pillar || rec.category || 'General';
+        }
+
+        function recommendationPages(rec) {
+            const value = rec.page_url || rec.page || rec.url || rec.page_urls || [];
+            if (Array.isArray(value)) {
+                return value.map((item) => String(item)).filter(Boolean);
+            }
+            return value ? [String(value)] : [];
+        }
+
+        function recommendationPageLabel(pages) {
+            if (!pages.length) return 'All pages';
+            if (pages.length === 1) return pages[0];
+            return `${pages[0]} (+${pages.length - 1} more)`;
+        }
+
+        function isAuthorityUnavailable(pillarKey) {
+            return pillarKey === 'authority' && String(state.scores.authority_context?.status || '').toLowerCase() === 'unavailable';
         }
 
         function recommendationCmsSteps(rec) {
@@ -410,6 +448,7 @@
             elements.pillarScores.innerHTML = pillars.map((pillar) => {
                 const score = pillarValue(state.scores.pillars || state.scores, pillar.key);
                 const pillarGrade = gradeFromScore(score);
+                const authorityUnavailable = isAuthorityUnavailable(pillar.key);
                 return `
                     <button class="pillar-score-row border-0 bg-transparent text-start" data-target="pillar-${slugify(pillar.key)}">
                         <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
@@ -422,6 +461,7 @@
                         <div class="progress" style="height: 0.75rem; border-radius: 999px; background: rgba(148, 163, 184, 0.18);">
                             <div class="progress-bar" role="progressbar" style="width: ${Math.max(0, Math.min(100, score))}%; background: linear-gradient(90deg, var(--siq-brand), var(--siq-brand-2));"></div>
                         </div>
+                        ${authorityUnavailable ? '<div class="small text-warning-emphasis mt-2">Add API key in Settings to unlock backlink authority metrics.</div>' : ''}
                     </button>
                 `;
             }).join('');
@@ -473,7 +513,24 @@
         }
 
         function renderRecommendations(filter = 'all') {
-            const filtered = recommendations.filter((rec) => filter === 'all' || String(rec.severity || rec.priority || 'medium').toLowerCase() === filter);
+            const severityFilter = String(elements.severityFilter?.value || filter || 'all').toLowerCase();
+            const pillarFilter = String(elements.pillarFilter?.value || 'all').toLowerCase();
+            const pageFilter = String(elements.pageFilter?.value || 'all');
+            const filtered = recommendations.filter((rec) => {
+                const severity = String(rec.severity || rec.priority || 'medium').toLowerCase();
+                if (severityFilter !== 'all' && severity !== severityFilter) {
+                    return false;
+                }
+                const pillar = recommendationPillar(rec).toLowerCase();
+                if (pillarFilter !== 'all' && pillar !== pillarFilter) {
+                    return false;
+                }
+                const pages = recommendationPages(rec);
+                if (pageFilter !== 'all' && !pages.includes(pageFilter)) {
+                    return false;
+                }
+                return true;
+            });
             if (!filtered.length) {
                 elements.recommendationsList.innerHTML = '<div class="alert alert-light border rounded-4">No recommendations available for this filter.</div>';
                 return;
@@ -481,6 +538,7 @@
             elements.recommendationsList.innerHTML = filtered.map((rec, index) => {
                 const severity = String(rec.severity || rec.priority || 'medium').toLowerCase();
                 const pillar = recommendationPillar(rec);
+                const pages = recommendationPages(rec);
                 const collapseId = `why-${index}-${slugify(pillar)}`;
                 const steps = recommendationCmsSteps(rec);
                 const tabsId = `cms-tabs-${index}`;
@@ -493,9 +551,10 @@
                                     <span class="badge rounded-pill text-bg-primary-subtle text-primary-emphasis">${escapeHtml(toTitleCase(pillar))}</span>
                                     <span class="badge rounded-pill ${severity === 'critical' ? 'text-bg-danger' : severity === 'high' ? 'text-bg-warning' : severity === 'medium' ? 'text-bg-primary' : 'text-bg-success'}">${escapeHtml(toTitleCase(severity))}</span>
                                     <span class="badge rounded-pill text-bg-secondary">Impact: ${escapeHtml(recommendationImpact(rec))}</span>
+                                    <span class="badge rounded-pill text-bg-light border">${escapeHtml(recommendationPageLabel(pages))}</span>
                                 </div>
                                 <h3 class="h5 mb-2">${escapeHtml(rec.issue || rec.title || rec.description || 'Recommendation')}</h3>
-                                <p class="soft-label mb-0">${escapeHtml(rec.description || rec.summary || rec.suggestion || '')}</p>
+                                <p class="soft-label mb-1"><strong>Current state:</strong> ${escapeHtml(rec.description || rec.summary || rec.suggestion || '')}</p>
                             </div>
                             <div>
                                 <button class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false">Why it matters</button>
@@ -550,6 +609,18 @@
             });
         }
 
+        function renderRecommendationFilters() {
+            const pillarOptions = Array.from(new Set(recommendations.map((rec) => recommendationPillar(rec).trim()).filter(Boolean))).sort();
+            elements.pillarFilter.innerHTML = ['<option value="all">All pillars</option>']
+                .concat(pillarOptions.map((pillar) => `<option value="${escapeHtml(pillar.toLowerCase())}">${escapeHtml(toTitleCase(pillar))}</option>`))
+                .join('');
+
+            const pageOptions = Array.from(new Set(recommendations.flatMap((rec) => recommendationPages(rec)).filter(Boolean))).sort();
+            elements.pageFilter.innerHTML = ['<option value="all">All pages</option>']
+                .concat(pageOptions.map((page) => `<option value="${escapeHtml(page)}">${escapeHtml(page)}</option>`))
+                .join('');
+        }
+
         function renderPillarAnalysis() {
             elements.pillarTabs.innerHTML = pillars.map((pillar, index) => `
                 <li class="nav-item" role="presentation">
@@ -562,8 +633,10 @@
                 const score = Number(data.score ?? pillarValue(state.scores.pillars || state.scores, pillar.key));
                 const issues = data.issues || data.findings || [];
                 const passed = data.passed_checks || data.good_practices || data.passes || [];
+                const authorityUnavailable = isAuthorityUnavailable(pillar.key);
                 return `
                     <div class="tab-pane fade ${index === 0 ? 'show active' : ''}" id="pillar-${slugify(pillar.key)}" role="tabpanel">
+                        ${authorityUnavailable ? '<div class="alert alert-warning">Backlink and authority enrichment is unavailable. <a class="alert-link" href="/settings">Add an API key</a> to unlock full authority data.</div>' : ''}
                         <div class="row g-4">
                             <div class="col-lg-4">
                                 <div class="card border-0 h-100" style="background: var(--siq-bg-soft);">
@@ -697,6 +770,7 @@
 
                 renderHeader();
                 renderScoreOverview();
+                renderRecommendationFilters();
                 renderRecommendations();
                 renderPillarAnalysis();
                 renderPages();
@@ -705,12 +779,8 @@
             }
         }
 
-        document.querySelectorAll('.rec-filter').forEach((button) => {
-            button.addEventListener('click', () => {
-                document.querySelectorAll('.rec-filter').forEach((btn) => btn.classList.remove('active'));
-                button.classList.add('active');
-                renderRecommendations(button.dataset.filter || 'all');
-            });
+        [elements.severityFilter, elements.pillarFilter, elements.pageFilter].forEach((filterControl) => {
+            filterControl?.addEventListener('change', () => renderRecommendations());
         });
 
         elements.chatForm.addEventListener('submit', async (event) => {
