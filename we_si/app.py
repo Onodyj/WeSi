@@ -290,6 +290,35 @@ def get_or_create_demo_user(session) -> Any:
     return user
 
 
+def _demo_subscription_snapshot(session) -> Dict[str, Any]:
+    models = _get_models()
+    SiteAnalysis = models["SiteAnalysis"]
+    user = get_or_create_demo_user(session)
+    subscription = user.subscription
+    if subscription is None:
+        return {
+            "tier_name": "Free",
+            "max_pages_per_run": 10,
+            "max_analyses_per_month": 5,
+            "analyses_remaining": 5,
+        }
+
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    analyses_this_month = (
+        session.query(SiteAnalysis)
+        .filter(SiteAnalysis.user_id == user.id, SiteAnalysis.created_at >= month_start)
+        .count()
+    )
+    remaining = max(0, int(subscription.max_analyses_per_month or 0) - analyses_this_month)
+    return {
+        "tier_name": str(subscription.tier.value).capitalize(),
+        "max_pages_per_run": int(subscription.max_pages_per_run or 0),
+        "max_analyses_per_month": int(subscription.max_analyses_per_month or 0),
+        "analyses_remaining": remaining,
+    }
+
+
 def _db_session():
     if "db_session" not in g:
         g.db_session = current_app.extensions["db_session_factory"]()
@@ -886,7 +915,9 @@ def create_app(config: dict = None) -> Flask:
             max_pages = _safe_int(payload.get("max_pages"), app.config["MAX_PAGES_DEFAULT"])
             if max_pages <= 0:
                 raise ValueError("max_pages must be a positive integer.")
-            max_depth = app.config["MAX_DEPTH_DEFAULT"]
+            max_depth = _safe_int(payload.get("max_depth"), app.config["MAX_DEPTH_DEFAULT"])
+            if max_depth <= 0:
+                raise ValueError("max_depth must be a positive integer.")
             created = _create_analysis_record(base_url, max_pages, max_depth)
             analysis = created["analysis"]
             user = created["user"]
@@ -1111,7 +1142,15 @@ def create_app(config: dict = None) -> Flask:
 
     @app.route("/")
     def home() -> Any:
-        return _render_page("home.html", error=request.args.get("error"), max_pages_default=app.config["MAX_PAGES_DEFAULT"])
+        plan = _demo_subscription_snapshot(_db_session())
+        return _render_page(
+            "index.html",
+            error=request.args.get("error"),
+            url=request.args.get("url", ""),
+            max_pages_default=plan["max_pages_per_run"] or app.config["MAX_PAGES_DEFAULT"],
+            max_depth_default=app.config["MAX_DEPTH_DEFAULT"],
+            subscription_plan=plan,
+        )
 
     @app.route("/analyze")
     def analyze_page() -> Any:

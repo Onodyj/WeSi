@@ -35,6 +35,16 @@
     text-align: end;
     font-variant-numeric: tabular-nums;
 }
+.usage-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid var(--siq-border);
+    background: var(--siq-bg-soft);
+    font-size: 0.9rem;
+}
 {% endblock %}
 
 {% block content %}
@@ -48,11 +58,20 @@
                 </span>
                 <h1 class="display-4 fw-bold mb-3">SiteIQ — Know exactly what to fix on your website</h1>
                 <p class="lead soft-label mb-4">Run a focused crawl, uncover the highest-impact issues, and get implementation-ready recommendations for content, SEO, UX, and site structure.</p>
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <span class="usage-chip">
+                        <span>📊</span>
+                        <span>{{ subscription_plan.tier_name }} plan: {{ subscription_plan.max_pages_per_run }} pages/scan, {{ subscription_plan.analyses_remaining }} remaining this month</span>
+                    </span>
+                    {% if subscription_plan.analyses_remaining <= 2 %}
+                    <a class="btn btn-sm btn-outline-warning rounded-pill" href="/settings">Upgrade for higher limits</a>
+                    {% endif %}
+                </div>
                 <form id="analysisForm" class="analyze-form">
                     <div class="row g-3 align-items-stretch">
                         <div class="col-lg-8">
                             <label class="form-label visually-hidden" for="websiteUrl">Website URL</label>
-                            <input id="websiteUrl" name="url" type="url" class="form-control form-control-lg rounded-4" placeholder="https://example.com" required>
+                            <input id="websiteUrl" name="url" type="url" class="form-control form-control-lg rounded-4" placeholder="https://example.com" value="{{ url }}" required>
                         </div>
                         <div class="col-lg-4 d-grid">
                             <button class="btn btn-brand btn-lg rounded-4" type="submit" id="submitButton">
@@ -73,19 +92,24 @@
                             <div class="card-body p-4">
                                 <div class="row g-4">
                                     <div class="col-md-6">
-                                        <label for="maxPages" class="form-label d-flex justify-content-between">
-                                            <span>Max pages</span>
-                                            <strong class="slider-value" id="maxPagesValue">50</strong>
-                                        </label>
-                                        <input type="range" class="form-range" id="maxPages" name="max_pages" min="5" max="200" value="50">
-                                        <div class="small soft-label">Limit crawl size to keep analysis focused and fast.</div>
+                                        <label for="focusUrl" class="form-label">Optional focus page URL</label>
+                                        <input type="url" class="form-control" id="focusUrl" name="focus_url" placeholder="https://example.com/pricing">
+                                        <div class="small soft-label mt-1">If set, this page is analyzed first.</div>
                                     </div>
                                     <div class="col-md-6">
+                                        <label for="maxPages" class="form-label d-flex justify-content-between">
+                                            <span>Max pages</span>
+                                            <strong class="slider-value" id="maxPagesValue">{{ max_pages_default }}</strong>
+                                        </label>
+                                        <input type="range" class="form-range" id="maxPages" name="max_pages" min="5" max="200" value="{{ max_pages_default }}">
+                                        <div class="small soft-label">Limit crawl size to keep analysis focused and fast.</div>
+                                    </div>
+                                    <div class="col-md-12">
                                         <label for="maxDepth" class="form-label d-flex justify-content-between">
                                             <span>Max depth</span>
-                                            <strong class="slider-value" id="maxDepthValue">3</strong>
+                                            <strong class="slider-value" id="maxDepthValue">{{ max_depth_default }}</strong>
                                         </label>
-                                        <input type="range" class="form-range" id="maxDepth" name="max_depth" min="1" max="5" value="3">
+                                        <input type="range" class="form-range" id="maxDepth" name="max_depth" min="1" max="5" value="{{ max_depth_default }}">
                                         <div class="small soft-label">Control how deep SiteIQ crawls from your starting URL.</div>
                                     </div>
                                 </div>
@@ -93,6 +117,9 @@
                         </div>
                     </div>
                 </form>
+                {% if error %}
+                <div class="alert alert-danger mt-3" role="alert">{{ error }}</div>
+                {% endif %}
                 <div id="formAlert" class="alert alert-danger mt-3 d-none" role="alert"></div>
             </div>
             <div class="col-lg-5">
@@ -198,7 +225,7 @@
             setSubmitting(true);
 
             const payload = {
-                url: form.url.value.trim(),
+                url: (form.focus_url?.value || form.url.value).trim(),
                 max_pages: Number(maxPages.value),
                 max_depth: Number(maxDepth.value),
             };
