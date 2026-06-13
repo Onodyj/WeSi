@@ -364,6 +364,16 @@
             return value ? [String(value)] : [];
         }
 
+        function recommendationPageLabel(pages) {
+            if (!pages.length) return 'All pages';
+            if (pages.length === 1) return pages[0];
+            return `${pages[0]} (+${pages.length - 1} more)`;
+        }
+
+        function isAuthorityUnavailable(pillarKey) {
+            return pillarKey === 'authority' && String(state.scores.authority_context?.status || '').toLowerCase() === 'unavailable';
+        }
+
         function recommendationCmsSteps(rec) {
             const source = rec.cms_steps || rec.cms || {};
             const genericHelp = recommendationPlacement(rec);
@@ -438,7 +448,7 @@
             elements.pillarScores.innerHTML = pillars.map((pillar) => {
                 const score = pillarValue(state.scores.pillars || state.scores, pillar.key);
                 const pillarGrade = gradeFromScore(score);
-                const authorityUnavailable = pillar.key === 'authority' && String(state.scores.authority_context?.status || '').toLowerCase() === 'unavailable';
+                const authorityUnavailable = isAuthorityUnavailable(pillar.key);
                 return `
                     <button class="pillar-score-row border-0 bg-transparent text-start" data-target="pillar-${slugify(pillar.key)}">
                         <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
@@ -541,7 +551,7 @@
                                     <span class="badge rounded-pill text-bg-primary-subtle text-primary-emphasis">${escapeHtml(toTitleCase(pillar))}</span>
                                     <span class="badge rounded-pill ${severity === 'critical' ? 'text-bg-danger' : severity === 'high' ? 'text-bg-warning' : severity === 'medium' ? 'text-bg-primary' : 'text-bg-success'}">${escapeHtml(toTitleCase(severity))}</span>
                                     <span class="badge rounded-pill text-bg-secondary">Impact: ${escapeHtml(recommendationImpact(rec))}</span>
-                                    <span class="badge rounded-pill text-bg-light border">${escapeHtml(pages[0] || 'All pages')}</span>
+                                    <span class="badge rounded-pill text-bg-light border">${escapeHtml(recommendationPageLabel(pages))}</span>
                                 </div>
                                 <h3 class="h5 mb-2">${escapeHtml(rec.issue || rec.title || rec.description || 'Recommendation')}</h3>
                                 <p class="soft-label mb-1"><strong>Current state:</strong> ${escapeHtml(rec.description || rec.summary || rec.suggestion || '')}</p>
@@ -623,7 +633,7 @@
                 const score = Number(data.score ?? pillarValue(state.scores.pillars || state.scores, pillar.key));
                 const issues = data.issues || data.findings || [];
                 const passed = data.passed_checks || data.good_practices || data.passes || [];
-                const authorityUnavailable = pillar.key === 'authority' && String(state.scores.authority_context?.status || '').toLowerCase() === 'unavailable';
+                const authorityUnavailable = isAuthorityUnavailable(pillar.key);
                 return `
                     <div class="tab-pane fade ${index === 0 ? 'show active' : ''}" id="pillar-${slugify(pillar.key)}" role="tabpanel">
                         ${authorityUnavailable ? '<div class="alert alert-warning">Backlink and authority enrichment is unavailable. <a class="alert-link" href="/settings">Add an API key</a> to unlock full authority data.</div>' : ''}

@@ -33,8 +33,24 @@ class WebDashboardTests(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 202)
-            create_record.assert_called_once_with("https://example.com", 20, 4)
+            create_record.assert_called_once_with("https://example.com", 20, 4, focus_url=None)
             start_job.assert_called_once()
+
+    def test_api_analyze_accepts_optional_focus_url(self):
+        with patch("we_si.app._create_analysis_record") as create_record, patch("we_si.app._start_analysis_job") as start_job:
+            create_record.return_value = {
+                "analysis": SimpleNamespace(id=124),
+                "user": SimpleNamespace(id=1),
+            }
+            start_job.return_value = "job-2"
+
+            response = self.client.post(
+                "/api/analyze",
+                json={"url": "https://example.com", "focus_url": "https://example.com/pricing"},
+            )
+
+            self.assertEqual(response.status_code, 202)
+            create_record.assert_called_once_with("https://example.com", 50, 3, focus_url="https://example.com/pricing")
 
 
 if __name__ == "__main__":

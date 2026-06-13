@@ -225,7 +225,8 @@
             setSubmitting(true);
 
             const payload = {
-                url: (form.focus_url?.value || form.url.value).trim(),
+                url: form.url.value.trim(),
+                focus_url: form.focus_url?.value.trim() || '',
                 max_pages: Number(maxPages.value),
                 max_depth: Number(maxDepth.value),
             };
