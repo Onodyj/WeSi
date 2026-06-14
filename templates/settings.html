@@ -181,7 +181,7 @@
                         const response = await fetch('/api/settings/api-key', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ service, value }),
+                            body: JSON.stringify({ service, api_key: value }),
                         });
                         const data = await response.json().catch(() => ({}));
                         if (!response.ok) {
@@ -200,10 +200,8 @@
                     const form = button.closest('form');
                     const service = form.dataset.service;
                     try {
-                        const response = await fetch('/api/settings/api-key', {
+                        const response = await fetch(`/api/settings/api-key/${encodeURIComponent(service)}`, {
                             method: 'DELETE',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ service }),
                         });
                         const data = await response.json().catch(() => ({}));
                         if (!response.ok) {
@@ -243,7 +241,7 @@
                 const response = await fetch('/api/settings/api-key', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ setting: 'ai_provider', value: selected.value }),
+                    body: JSON.stringify({ ai_provider: selected.value }),
                 });
                 const data = await response.json().catch(() => ({}));
                 if (!response.ok) {

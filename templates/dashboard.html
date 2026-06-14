@@ -753,12 +753,14 @@
         async function initialize() {
             addChatMessage('assistant', 'Welcome to SiteIQ. Ask what to fix first, how a recommendation helps SEO, or generate an action plan.');
             try {
-                const [summary, scores, recs, pillarData, pages] = await Promise.all([
+                const [summary, scores, recs] = await Promise.all([
                     fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}`),
                     fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}/scores`),
                     fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}/recommendations`),
-                    fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}/pillars`),
-                    fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}/pages`),
+                ]);
+                const [pillarData, pages] = await Promise.all([
+                    fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}/pillars`).catch(() => ({ pillars: [] })),
+                    fetchJson(`/api/analysis/${encodeURIComponent(analysisId)}/pages`).catch(() => ({ pages: [] })),
                 ]);
 
                 state.metadata = summary.metadata || summary.analysis || summary;
