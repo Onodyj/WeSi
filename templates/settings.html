@@ -238,7 +238,7 @@
             }
             providerSaveStatus.textContent = 'Saving…';
             try {
-                const response = await fetch('/api/settings/api-key', {
+                const response = await fetch('/api/settings/provider', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ai_provider: selected.value }),

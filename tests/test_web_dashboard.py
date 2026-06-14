@@ -62,10 +62,10 @@ class WebDashboardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("api_key is required", response.get_json()["error"])
 
-    def test_api_store_key_accepts_legacy_value_field(self):
+    def test_api_store_key_passes_trimmed_values(self):
         with patch("we_si.app._store_api_key_for_demo_user") as store_key:
             store_key.return_value = {"success": True, "service": "openai", "storage_mode": "plaintext-session"}
-            response = self.client.post("/api/settings/api-key", json={"service": "openai", "value": "sk-test"})
+            response = self.client.post("/api/settings/api-key", json={"service": " openai ", "api_key": " sk-test "})
             self.assertEqual(response.status_code, 201)
             store_key.assert_called_once_with("openai", "sk-test")
 
