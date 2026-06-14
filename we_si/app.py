@@ -344,7 +344,9 @@ def _render_page(template_name: str, **context: Any) -> str:
 
 def _json_error(message: str, status_code: int = 400, **extra: Any):
     payload = {"error": message}
-    payload.update(extra)
+    for safe_key in ("code", "field"):
+        if safe_key in extra:
+            payload[safe_key] = extra[safe_key]
     return jsonify(payload), status_code
 
 
@@ -648,7 +650,9 @@ def _run_fallback_analysis(app: Flask, job_id: str, analysis_id: int, base_url: 
 
             if "error" not in page_data:
                 for link in page_data.get("links", {}).get("internal", []):
-                    link_url = analyzer.normalize_url(link.get("absolute_url", ""))
+                    link_url = analyzer.normalize_url(link.get("absolute_url", "") or link.get("href", ""))
+                    if not link_url:
+                        continue
                     if link_url in analyzer.visited_urls or link_url in to_visit:
                         continue
                     next_depth = depth + 1
@@ -741,20 +745,57 @@ def _load_secret_backend(app: Flask):
 
 def _store_api_key_for_demo_user(service: str, api_key: str) -> Dict[str, Any]:
     service_name = service.strip().lower()
-    if not service_name or not api_key:
-        raise ValueError("Both service and api_key are required.")
+    api_key_trimmed = api_key.strip()
+    if not service_name:
+        raise ValueError("service is required and cannot be empty")
+    if not api_key_trimmed:
+        raise ValueError("api_key is required and cannot be empty")
 
     app = current_app
     secret_manager = app.extensions.get("secret_manager")
     if secret_manager is None:
-        PlaintextSecretStore.store(service_name, api_key)
-        return {"service": service_name, "storage_mode": "plaintext-session", "warning": "Encryption disabled; key stored in session."}
+        PlaintextSecretStore.store(service_name, api_key_trimmed)
+        return {
+            "success": True,
+            "service": service_name,
+            "storage_mode": "plaintext-session",
+            "message": f"API key for {service_name} saved (session storage)",
+        }
 
-    secret_module = __import__("we_si.storage.secrets", fromlist=["store_api_key"])
-    session = _db_session()
-    user = get_or_create_demo_user(session)
-    secret_module.store_api_key(session, user.id, service_name, api_key, secret_manager)
-    return {"service": service_name, "storage_mode": "encrypted-db"}
+    try:
+        secret_module = __import__("we_si.storage.secrets", fromlist=["store_api_key"])
+        session = _db_session()
+        user = get_or_create_demo_user(session)
+        secret_module.store_api_key(session, user.id, service_name, api_key_trimmed, secret_manager)
+        return {
+            "success": True,
+            "service": service_name,
+            "storage_mode": "encrypted-db",
+            "message": f"API key for {service_name} saved (encrypted)",
+        }
+    except Exception as exc:
+        LOGGER.warning("Encrypted storage failed, falling back to session: %s", exc)
+        PlaintextSecretStore.store(service_name, api_key_trimmed)
+        return {
+            "success": True,
+            "service": service_name,
+            "storage_mode": "plaintext-session",
+            "message": f"API key for {service_name} saved (session fallback)",
+        }
+
+
+def _get_provider_preference() -> str:
+    return (flask_session.get("ai_provider") or "auto").strip().lower() or "auto"
+
+
+def _set_provider_preference(provider: str) -> Dict[str, Any]:
+    provider_name = (provider or "").strip().lower()
+    allowed_providers = {"auto", "openai", "anthropic", "gemini", "google", "ollama", "none"}
+    if provider_name not in allowed_providers:
+        raise ValueError(f"ai_provider must be one of {sorted(allowed_providers)}")
+    flask_session["ai_provider"] = provider_name
+    flask_session.modified = True
+    return {"success": True, "ai_provider": provider_name}
 
 
 def _list_api_key_services_for_demo_user() -> Dict[str, Any]:
@@ -795,6 +836,16 @@ def _lookup_api_key(service: str) -> Optional[str]:
     session = _db_session()
     user = get_or_create_demo_user(session)
     return secret_module.get_api_key(session, user.id, service_name, secret_manager)
+
+
+def _settings_payload() -> Dict[str, Any]:
+    key_data = _list_api_key_services_for_demo_user()
+    services = key_data.get("services", []) or []
+    return {
+        **key_data,
+        "stored_keys": {service: True for service in services},
+        "ai_provider": _get_provider_preference(),
+    }
 
 
 def _build_report_for_analysis(analysis: Any) -> Dict[str, Any]:
@@ -929,11 +980,11 @@ def create_app(config: dict = None) -> Flask:
             user = created["user"]
             job_id = _start_analysis_job(app, analysis.id, base_url, user.id, max_pages, max_depth)
             return jsonify({"job_id": job_id, "analysis_id": analysis.id}), 202
-        except ValueError as exc:
-            return _json_error(str(exc), 400)
+        except ValueError:
+            return _json_error("Invalid analysis request.", 400)
         except Exception as exc:
             LOGGER.exception("Failed to start analysis")
-            return _json_error("Failed to start analysis.", 500, detail=str(exc))
+            return _json_error("Failed to start analysis.", 500)
 
     @app.route("/api/status/<job_id>")
     def api_status(job_id: str) -> Any:
@@ -951,7 +1002,7 @@ def create_app(config: dict = None) -> Flask:
             )
         except Exception as exc:
             LOGGER.exception("Failed to fetch job status")
-            return _json_error("Failed to fetch job status.", 500, detail=str(exc))
+            return _json_error("Failed to fetch job status.", 500)
 
     @app.route("/api/analysis/<int:analysis_id>")
     def api_analysis(analysis_id: int) -> Any:
@@ -964,7 +1015,20 @@ def create_app(config: dict = None) -> Flask:
             return jsonify(_analysis_payload(analysis))
         except Exception as exc:
             LOGGER.exception("Failed to fetch analysis %s", analysis_id)
-            return _json_error("Failed to fetch analysis.", 500, detail=str(exc))
+            return _json_error("Failed to fetch analysis.", 500)
+
+    @app.route("/api/analysis/<int:analysis_id>/pages")
+    def api_analysis_pages(analysis_id: int) -> Any:
+        try:
+            SiteAnalysis = _get_models()["SiteAnalysis"]
+            analysis = _db_session().query(SiteAnalysis).filter_by(id=analysis_id).first()
+            if analysis is None:
+                return _json_error("Analysis not found.", 404)
+            pages = [_page_payload(page) for page in analysis.pages]
+            return jsonify({"analysis_id": analysis_id, "total_pages": len(pages), "pages": pages})
+        except Exception as exc:
+            LOGGER.exception("Failed to fetch pages for analysis %s", analysis_id)
+            return _json_error("Failed to fetch pages.", 500)
 
     @app.route("/api/analysis/<int:analysis_id>/scores")
     def api_analysis_scores(analysis_id: int) -> Any:
@@ -981,7 +1045,7 @@ def create_app(config: dict = None) -> Flask:
             return jsonify(scores)
         except Exception as exc:
             LOGGER.exception("Failed to fetch scores for %s", analysis_id)
-            return _json_error("Failed to fetch scores.", 500, detail=str(exc))
+            return _json_error("Failed to fetch scores.", 500)
 
     @app.route("/api/analysis/<int:analysis_id>/recommendations")
     def api_analysis_recommendations(analysis_id: int) -> Any:
@@ -995,7 +1059,7 @@ def create_app(config: dict = None) -> Flask:
             return jsonify(_generate_recommendations(_build_report_for_analysis(analysis)))
         except Exception as exc:
             LOGGER.exception("Failed to fetch recommendations for %s", analysis_id)
-            return _json_error("Failed to fetch recommendations.", 500, detail=str(exc))
+            return _json_error("Failed to fetch recommendations.", 500)
 
     @app.route("/api/analysis/<int:analysis_id>/report/<report_type>")
     def api_analysis_report(analysis_id: int, report_type: str) -> Any:
@@ -1027,10 +1091,10 @@ def create_app(config: dict = None) -> Flask:
             return _json_error("Unsupported report type. Use html, text, or json.", 400)
         except ImportError as exc:
             LOGGER.exception("Report generator import failed")
-            return _json_error("Requested report generator is unavailable.", 500, detail=str(exc))
+            return _json_error("Requested report generator is unavailable.", 500)
         except Exception as exc:
             LOGGER.exception("Failed to generate report for %s", analysis_id)
-            return _json_error("Failed to generate report.", 500, detail=str(exc))
+            return _json_error("Failed to generate report.", 500)
 
     @app.route("/api/analysis/<int:analysis_id>/chat", methods=["POST"])
     def api_analysis_chat(analysis_id: int) -> Any:
@@ -1076,7 +1140,7 @@ def create_app(config: dict = None) -> Flask:
             return jsonify({"response": response_text, "conversation_id": conversation.id})
         except Exception as exc:
             LOGGER.exception("Chat request failed for analysis %s", analysis_id)
-            return _json_error("Failed to process chat request.", 500, detail=str(exc))
+            return _json_error("Failed to process chat request.", 500)
 
     @app.route("/api/analysis/<int:analysis_id>/stream")
     def api_analysis_stream(analysis_id: int) -> Any:
@@ -1119,21 +1183,46 @@ def create_app(config: dict = None) -> Flask:
     def api_store_key() -> Any:
         payload = request.get_json(silent=True) or {}
         try:
-            result = _store_api_key_for_demo_user(payload.get("service", ""), payload.get("api_key", ""))
+            service = (payload.get("service") or "").strip().lower()
+            api_key = (payload.get("api_key") or "").strip()
+            if not service:
+                return _json_error("service is required and cannot be empty", 400)
+            if not api_key:
+                return _json_error("api_key is required and cannot be empty", 400)
+            result = _store_api_key_for_demo_user(service, api_key)
             return jsonify(result), 201
-        except ValueError as exc:
-            return _json_error(str(exc), 400)
+        except ValueError:
+            return _json_error("Invalid API key request.", 400)
         except Exception as exc:
             LOGGER.exception("Failed to store API key")
-            return _json_error("Failed to store API key.", 500, detail=str(exc))
+            return _json_error("Failed to store API key.", 500)
+
+    @app.route("/api/settings")
+    def api_settings() -> Any:
+        try:
+            return jsonify(_settings_payload())
+        except Exception as exc:
+            LOGGER.exception("Failed to fetch settings")
+            return _json_error("Failed to fetch settings.", 500)
 
     @app.route("/api/settings/api-keys")
     def api_list_keys() -> Any:
         try:
-            return jsonify(_list_api_key_services_for_demo_user())
+            return jsonify(_settings_payload())
         except Exception as exc:
             LOGGER.exception("Failed to list API keys")
-            return _json_error("Failed to list API keys.", 500, detail=str(exc))
+            return _json_error("Failed to list API keys.", 500)
+
+    @app.route("/api/settings/provider", methods=["POST"])
+    def api_set_provider() -> Any:
+        payload = request.get_json(silent=True) or {}
+        try:
+            return jsonify(_set_provider_preference(payload.get("ai_provider", "")))
+        except ValueError:
+            return _json_error("Invalid ai_provider value.", 400)
+        except Exception as exc:
+            LOGGER.exception("Failed to store provider preference")
+            return _json_error("Failed to store provider preference.", 500)
 
     @app.route("/api/settings/api-key/<service>", methods=["DELETE"])
     def api_delete_key(service: str) -> Any:
@@ -1144,7 +1233,7 @@ def create_app(config: dict = None) -> Flask:
             return jsonify(result)
         except Exception as exc:
             LOGGER.exception("Failed to delete API key")
-            return _json_error("Failed to delete API key.", 500, detail=str(exc))
+            return _json_error("Failed to delete API key.", 500)
 
     @app.route("/")
     def home() -> Any:
