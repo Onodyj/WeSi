@@ -3,6 +3,7 @@
 {% block title %}SiteIQ — Results Dashboard{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/deepdives.css') }}">
 .dashboard-grid {
     display: grid;
     gap: 1.5rem;
@@ -204,6 +205,8 @@
         <ul class="nav nav-pills flex-nowrap overflow-auto pb-2" id="pillarTabs" role="tablist"></ul>
         <div class="tab-content pt-4" id="pillarTabContent"></div>
     </section>
+
+    {% include "results_components/technical_deepdives.html" %}
 
     <section class="row g-4">
         <div class="col-xl-5">
@@ -798,4 +801,10 @@
         initialize();
     })();
 </script>
+<script>
+    // Expose analysis ID for deep-dive JS modules
+    window.__SITEIQ_ANALYSIS_ID__ = {{ analysis_id|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/link-graph.js') }}"></script>
+<script src="{{ url_for('static', filename='js/deepdives.js') }}"></script>
 {% endblock %}

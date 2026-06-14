@@ -1,0 +1,67 @@
+{# templates/results_components/technical_deepdives.html
+   Container for the three collapsible deep-dive sections.
+   Included by dashboard.html after the pillar analysis section.
+#}
+
+<section class="section-card section-anchor mt-4" id="technicalDeepDivesSection"
+         aria-label="Technical deep-dive sections">
+    <div class="mb-4">
+        <h2 class="h3 mb-1">Technical Deep-Dives</h2>
+        <p class="soft-label mb-0">
+            Advanced analysis sections — click any section to expand detailed data.
+        </p>
+    </div>
+
+    <div class="technical-deepdives d-grid gap-0">
+        {# --- PageSpeed / Core Web Vitals ----------------------------- #}
+        <div class="deepdive-section" id="pagespeed-section" aria-labelledby="pagespeed-toggle">
+            <button class="deepdive-toggle"
+                    id="pagespeed-toggle"
+                    type="button"
+                    aria-expanded="false"
+                    aria-controls="pagespeed-content">
+                <span class="toggle-icon" aria-hidden="true">📊</span>
+                <span class="toggle-label">Core Web Vitals</span>
+                <span class="deepdive-status-badge status-pending" aria-live="polite">click to load</span>
+                <span class="toggle-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="deepdive-content" id="pagespeed-content" role="region" aria-labelledby="pagespeed-toggle">
+                {% include "results_components/pagespeed_section.html" %}
+            </div>
+        </div>
+
+        {# --- Structured Data / Schema -------------------------------- #}
+        <div class="deepdive-section" id="schema-section" aria-labelledby="schema-toggle">
+            <button class="deepdive-toggle"
+                    id="schema-toggle"
+                    type="button"
+                    aria-expanded="false"
+                    aria-controls="schema-content">
+                <span class="toggle-icon" aria-hidden="true">🏷️</span>
+                <span class="toggle-label">Structured Data</span>
+                <span class="deepdive-status-badge status-pending" aria-live="polite">click to load</span>
+                <span class="toggle-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="deepdive-content" id="schema-content" role="region" aria-labelledby="schema-toggle">
+                {% include "results_components/schema_section.html" %}
+            </div>
+        </div>
+
+        {# --- Link Architecture --------------------------------------- #}
+        <div class="deepdive-section" id="links-section" aria-labelledby="links-toggle">
+            <button class="deepdive-toggle"
+                    id="links-toggle"
+                    type="button"
+                    aria-expanded="false"
+                    aria-controls="links-content">
+                <span class="toggle-icon" aria-hidden="true">🔗</span>
+                <span class="toggle-label">Link Architecture</span>
+                <span class="deepdive-status-badge status-pending" aria-live="polite">click to load</span>
+                <span class="toggle-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="deepdive-content" id="links-content" role="region" aria-labelledby="links-toggle">
+                {% include "results_components/link_architecture_section.html" %}
+            </div>
+        </div>
+    </div>
+</section>

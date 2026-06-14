@@ -797,6 +797,27 @@ def _lookup_api_key(service: str) -> Optional[str]:
     return secret_module.get_api_key(session, user.id, service_name, secret_manager)
 
 
+def _infer_site_type(analysis: Any) -> str:
+    """Heuristically classify the site type for schema recommendations."""
+    base_url = (analysis.base_url or "").lower()
+    summary = analysis.summary or {}
+    pages = analysis.pages or []
+    page_urls = " ".join(p.url.lower() for p in pages if p.url)
+
+    ecommerce_signals = ("shop", "store", "product", "cart", "checkout", "buy", "price", "woocommerce", "shopify")
+    local_signals = ("location", "address", "hours", "directions", "near-me", "local")
+    article_signals = ("blog", "article", "news", "post", "journal", "magazine")
+
+    combined = base_url + " " + page_urls
+    if any(s in combined for s in ecommerce_signals):
+        return "ecommerce"
+    if any(s in combined for s in local_signals):
+        return "local"
+    if any(s in combined for s in article_signals):
+        return "article"
+    return "default"
+
+
 def _build_report_for_analysis(analysis: Any) -> Dict[str, Any]:
     payload = _analysis_payload(analysis)
     return {
@@ -1114,6 +1135,116 @@ def create_app(config: dict = None) -> Flask:
                 time.sleep(1)
 
         return Response(event_stream(), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.route("/api/analysis/<int:analysis_id>/pagespeed")
+    def api_analysis_pagespeed(analysis_id: int) -> Any:
+        try:
+            SiteAnalysis = _get_models()["SiteAnalysis"]
+            analysis = _db_session().query(SiteAnalysis).filter_by(id=analysis_id).first()
+            if analysis is None:
+                return _json_error("Analysis not found.", 404)
+
+            # Return cached result if present
+            cache_key = f"pagespeed_{analysis_id}"
+            cached = app.extensions.get("pagespeed_cache", {}).get(cache_key)
+            if cached:
+                return jsonify(cached)
+
+            api_key = _lookup_api_key("pagespeed") or _lookup_api_key("google")
+            from we_si.integrations.pagespeed import PageSpeedIntegration  # type: ignore
+            psi = PageSpeedIntegration()
+            metrics = psi.get_metrics(analysis.base_url, api_key)
+            result = psi.assess_performance(metrics)
+            result["url"] = analysis.base_url
+            app.extensions.setdefault("pagespeed_cache", {})[cache_key] = result
+            return jsonify(result)
+        except Exception as exc:
+            LOGGER.exception("Failed to fetch PageSpeed data for analysis %s", analysis_id)
+            return _json_error("Failed to fetch PageSpeed data.", 500)
+
+    @app.route("/api/analysis/<int:analysis_id>/pagespeed/refresh", methods=["POST"])
+    def api_analysis_pagespeed_refresh(analysis_id: int) -> Any:
+        try:
+            SiteAnalysis = _get_models()["SiteAnalysis"]
+            analysis = _db_session().query(SiteAnalysis).filter_by(id=analysis_id).first()
+            if analysis is None:
+                return _json_error("Analysis not found.", 404)
+
+            # Invalidate cache and re-fetch
+            cache_key = f"pagespeed_{analysis_id}"
+            app.extensions.setdefault("pagespeed_cache", {}).pop(cache_key, None)
+
+            api_key = _lookup_api_key("pagespeed") or _lookup_api_key("google")
+            from we_si.integrations.pagespeed import PageSpeedIntegration  # type: ignore
+            psi = PageSpeedIntegration()
+            metrics = psi.get_metrics(analysis.base_url, api_key)
+            result = psi.assess_performance(metrics)
+            result["url"] = analysis.base_url
+            app.extensions.setdefault("pagespeed_cache", {})[cache_key] = result
+            return jsonify(result)
+        except Exception as exc:
+            LOGGER.exception("Failed to refresh PageSpeed data for analysis %s", analysis_id)
+            return _json_error("Failed to refresh PageSpeed data.", 500)
+
+    @app.route("/api/analysis/<int:analysis_id>/schema")
+    def api_analysis_schema(analysis_id: int) -> Any:
+        try:
+            SiteAnalysis = _get_models()["SiteAnalysis"]
+            analysis = _db_session().query(SiteAnalysis).filter_by(id=analysis_id).first()
+            if analysis is None:
+                return _json_error("Analysis not found.", 404)
+            if not _analysis_report_ready(analysis):
+                return _json_error("Analysis results are not ready yet.", 409)
+
+            from we_si.integrations.schema_validator import SchemaValidator  # type: ignore
+            validator = SchemaValidator()
+
+            # Build page list from stored page records
+            pages = []
+            for page in analysis.pages:
+                page_data = page.analysis_data or {}
+                pages.append({
+                    "url": page.url,
+                    "html": page_data.get("html") or page_data.get("content") or "",
+                })
+            audit = validator.audit_pages(pages)
+
+            # Detect site type heuristic from URL patterns and page count
+            site_type = _infer_site_type(analysis)
+            recommendations = validator.recommend_schema(site_type, audit["found_types"])
+
+            return jsonify({
+                "found_types": audit["found_types"],
+                "issues": audit["issues"],
+                "pages_audited": len(pages),
+                "recommendations": recommendations,
+                "site_type": site_type,
+                "status": "ok",
+            })
+        except Exception as exc:
+            LOGGER.exception("Failed to audit schema for analysis %s", analysis_id)
+            return _json_error("Failed to audit schema.", 500)
+
+    @app.route("/api/analysis/<int:analysis_id>/link-graph")
+    def api_analysis_link_graph(analysis_id: int) -> Any:
+        try:
+            SiteAnalysis = _get_models()["SiteAnalysis"]
+            analysis = _db_session().query(SiteAnalysis).filter_by(id=analysis_id).first()
+            if analysis is None:
+                return _json_error("Analysis not found.", 404)
+            if not _analysis_report_ready(analysis):
+                return _json_error("Analysis results are not ready yet.", 409)
+
+            from we_si.analysis.link_analyzer import LinkGraphAnalyzer  # type: ignore
+            analyzer = LinkGraphAnalyzer()
+
+            pages = [_page_payload(page) for page in analysis.pages]
+            graph = analyzer.build_graph(pages, analysis.base_url)
+            viz = analyzer.export_for_visualization()
+            return jsonify({**graph, "visualization": viz})
+        except Exception as exc:
+            LOGGER.exception("Failed to build link graph for analysis %s", analysis_id)
+            return _json_error("Failed to build link graph.", 500)
 
     @app.route("/api/settings/api-key", methods=["POST"])
     def api_store_key() -> Any:
